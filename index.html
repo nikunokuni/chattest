@@ -382,7 +382,7 @@ const $id = id => document.getElementById(id);
    ai.js（callAI のみ）
    ═══════════════════════════════════════════════════════ */
 async function callAI(messages, system) {
-  const res = await fetch('/api/chat', {
+  const res = await fetch('/api/chat.js', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, system }),
