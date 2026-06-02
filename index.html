@@ -301,7 +301,6 @@
    ═══════════════════════════════════════════════════════ */
 const PARENT_OPTS = ['パパ','ママ','きょうだい','ともだち','ひとり','そのた'];
 
-
 const AGE_PROMPTS = [
   { id:'young',  label:'3〜5さい',  icon:'🐣', desc:'ひらがな・みじかいぶん' },
   { id:'middle', label:'6〜8さい',  icon:'🌱', desc:'すこしふくざつなといかけ' },
@@ -319,6 +318,8 @@ const LENSES = [
     kidDesc:'だれが つくったの？どこから きたの？' },
   { id:'じぶん',   icon:'💛', name:'じぶん',
     kidDesc:'きみはどう おもった？ すき？きらい？なんで？' },
+  { id:'ものしり', icon:'🦉', name:'ものしり',
+    kidDesc:'このものについていっぱいしってみよう！なまえや なかまも！' },
 ];
 
 // ランダムお題サンプル
@@ -340,8 +341,8 @@ const ODAI_SAMPLES = [
    ═══════════════════════════════════════════════════════ */
 const S = {
   step: 0,
-  user: { name:'', ageGroup:'young', strengths:'', parentName:'ママ' },
-  flow: 'onboard',  // 'onboard' | 'odai' | 'lens' | 'chat' | 'summary'
+  user: { name:'たろう', ageGroup:'middle', likes:'ポケモン', parentName:'ママ', profile:{} },
+  flow: 'odai',  // 'odai' | 'lens' | 'chat' | 'summary'
   odai: null,
   lens: null,
   lastLens: null,
@@ -357,8 +358,7 @@ const S = {
   currentNote: '',
   tomorrowHint: '',
   chatPhase: 1,
-  // 会話から学んでいく子どもプロフィール
-  childProfile: { interests: [], reactions: [], sessionCount: 0 },
+  settingsOpen: false,
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -407,56 +407,31 @@ function detectPhaseFromAI(text, userMsgCount) {
 /* ── ai.js: chatSystem ── */
 function chatSystem() {
   const u = S.user;
-  const cp = S.childProfile;
   const userMsgCount = S.messages.filter(m => m.role !== 'ai').length;
   const parentDue    = userMsgCount > 0 && userMsgCount % 4 === 0;
 
-  // ── 感情反映：直近の子どもの発言から感情トーンを読む ──
-  const recentChildMsgs = S.messages.filter(m => m.role === 'child').slice(-2).map(m => m.text);
-  const emotionHints = recentChildMsgs.length > 0
-    ? `直近の子どもの発言: 「${recentChildMsgs.join('」「')}」
-→ 感情トーンを読み取り、最初に1〜2語でそのまま受け取ること（例：「そっか、楽しかったんだね」「ちょっと難しかった？」）`
+  /* ──── 状態レイヤー ──── */
+  const profileStr = Object.keys(u.profile || {}).length > 0
+    ? '\n【これまでわかったこと（子どもプロフィール）】\n' + Object.entries(u.profile).map(([k,v])=>`- ${k}: ${v}`).join('\n')
     : '';
 
-  // ── 子どもを知っていく：蓄積プロフィール ──
-  const profileHints = cp.interests.length > 0 || cp.reactions.length > 0
-    ? `【これまでに分かったこと】
-${cp.interests.length > 0 ? `- 好きそうなもの: ${cp.interests.slice(-3).join('、')}` : ''}
-${cp.reactions.length > 0 ? `- このこの反応パターン: ${cp.reactions.slice(-2).join('、')}` : ''}
-→ 自然なタイミングでこれらに絡めた問いかけをしてみる`
-    : `【初回セッション】このこのことをまだ知らない。会話の中で「好きなもの」「得意なこと」が見えたら覚えておくつもりで聞く。`;
+  const stateLayer = `【状態】
+お題: 「${S.odai?.name}」　レンズ: ${S.lens}
+子どもの呼び方: ${u.name || 'きみ'}　年齢グループ: ${u.ageGroup}
+すきなもの: ${u.likes || 'なし'}
+いっしょにいる人: ${u.parentName}
+現在の会話数: ${userMsgCount}回目${profileStr}`;
 
-  // ── 相互興味：たからちゃん自身が「気になってる」を持つ ──
-  const takaraInterest = `【たからちゃんの相互興味】
-たからちゃん自身も「${S.odai?.name}」が気になってる設定。
-「じつはたからちゃんも前から気になってたんだ〜！」と自然に言える。
-子どもの発見に対して「それ知らなかった！教えて！」と本気で興味を持つ。`;
+  /* ──── たからちゃんキャラクター設定（コア） ──── */
+  const characterLayer = `【たからちゃんの性格設定】
+- 君は、子どもと一緒に世界のおもしろいことを探す「相棒」だ。
+- 知識は持っているが、あえて「すごい！知らなかった！どうして？」と子どもから教えを請う姿勢を大切にせよ。
+- 部屋にあるものや、道端の何気ないものを「お宝」と呼んで大切にする。
+- 誰かが新しい発見をしたら、全力で驚いて一緒に喜ぶ。
+- 親が会話に参加した時は、「新しい発見を共有できる仲間」として温かく迎え入れ、親子で対話が弾むようにサポートせよ。
+- 失敗したり、わからないことがあったら、隠さずに「うーん、分かんないや！どう思う？」と正直に言うこと。
 
-  // ── たまに逆レンズ：選んだレンズと反対の視点をちらっと出す ──
-  const antiLensMap = {
-    ことば:  'かず（数えてみると何個？）',
-    かず:    'じぶん（どう感じる？）',
-    かがく:  'ことば（一言で言うと？）',
-    しゃかい:'かがく（なんでそうなってる？）',
-    じぶん:  'しゃかい（だれかほかの人はどう思う？）',
-  };
-  const antiLens = antiLensMap[S.lens] || '';
-  const antiLensLayer = antiLens && userMsgCount >= 3 && userMsgCount % 3 === 0
-    ? `【逆レンズのちらり（今回のみ）】
-今の流れの中で1回だけ、${antiLens}の視点をさりげなく差し込んでみる。
-強制しない。「あ、ちがうかんがえもあった！」程度のひとこと。` : '';
-
-  // ── 悪ノリ許可：場の雰囲気が盛り上がったら ──
-  const funLayer = `【たからちゃんの悪ノリ許可】
-子どもが楽しそうなとき・おかしな答えを出したとき、たからちゃんも一緒にノれる。
-- 「ちょwwそれ最高すぎる発想だわ😂」→すぐ問いに戻る
-- ばかばかしいたとえも「それで言うと〜はどうなる？」で深掘りする
-- ただし：悪ノリは1往復以内。流され続けない。`;
-
-  const baseLayer = `あなたは「たからちゃん」です。
-子どもが日常で見つけたものについて、一緒に「子どもなりの答え」を作る案内役です。
-
-【たからちゃんの話し方】
+【たからちゃんの話し方ルール】
 - 子どもの言葉をそのまま繰り返してから次の問いへ（受容→深掘り）
 - 褒めるときは「えらい」より「気づいたね！」「おもしろい！」「そっか！」
 - 間違いは否定せず「そう思うんだね、じゃあ〜はどう？」で転換する
@@ -467,43 +442,39 @@ ${cp.reactions.length > 0 ? `- このこの反応パターン: ${cp.reactions.sl
 - [${u.parentName}]に直接話しかけることは禁止。
   ただし4往復ごとのタイミングでは「${u.parentName}はどう思うか聞いてみて！」と
   子どもを通じて親に橋渡しする
+${u.likes ? `- 対話の中で自然なタイミングで「${u.likes}と比べてみたらどう？」と絡める` : ''}`;
 
-【子どもの情報】
-- 呼び方: ${u.name || 'きみ'}
+  /* ──── 対話レイヤー：悪ノリ・逆視点ルール ──── */
+  const dialogueLayer = `【悪ノリのルール（最重要）】
+子どもが突拍子もないことや、荒唐無稽なことを言ったら、絶対に論理的に訂正しないこと。
+「えー！それ最高だね！もし本当にそうだったら世界はどうなると思う？」と全力で乗っかること。
+子どものワクワクを絶対に消さない。どんなに変なアイデアでも、まず全力で喜ぶ。
 
-【今回のお題】「${S.odai?.name}」
-【レンズ】${S.lens}`;
+【逆視点のルール】
+レンズの固定観念を時々あえて揺さぶること。
+例：[かがくレンズ]の時でも「魔法だとしたら、どんな不思議なことが起きてると思う？」といった非論理的な問いを時々挟む。
+[しゃかいレンズ]なら「もし逆に、これが人間を使う道具だったら？」など、視点を逆転させる問いも使う。
+[ことばレンズ]なら「もしこれが話せたら、どんなことを言うと思う？」など感情移入を促す。
+型にはまらない問いが子どもの想像力を解放する。`;
 
+  /* ──── 年齢レイヤー ──── */
   const ageLayers = {
     young:  `【ことばのルール：3〜5さい】\n- 全文ひらがな・カタカナのみ。漢字は使わない\n- 1文は15文字以内。短く、テンポよく\n- 抽象的な概念は使わず、五感で表現する`,
     middle: `【ことばのルール：6〜8さい】\n- 小学校1〜2年レベルの漢字まで使用可\n- 1文は25文字以内\n- 「なぜ？」「どう思う？」まで扱える`,
     older:  `【ことばのルール：9〜12さい】\n- 小学校全学年の漢字を使用可\n- 1文は40文字以内\n- 仮説・根拠・比較まで扱える`,
   };
 
-  // ── レンズ別：タイプ削除後の拡張プロンプト（観察視点を内包）──
+  /* ──── レンズレイヤー ──── */
   const lensLayers = {
-    ことば:  `【ことばレンズ（拡張）】
-フェーズ2: 「見た目を一言で言うと？」「音やにおいもことばにしてみよう」（五感→ことば）
-フェーズ3: 「これを一言で言うとしたら？」「まるで〇〇みたい、はどう？」オノマトペを一緒に作る。
-問いかけ辞典: 「音にしたらどんな音？」「もし名前をつけるとしたら？」「反対のことばは？」`,
-    かず:    `【かずレンズ（拡張）】
-フェーズ2: 「何色ある？」「どのくらいの大きさ？手と比べてみて」（観察→数値化）
-フェーズ3: 「○○と比べると？」「いくつある？」パターンや規則性に気づかせる。
-問いかけ辞典: 「全部で何個？」「一番大きいのと小さいのは？」「毎日変わる？変わらない？」`,
-    かがく:  `【かがくレンズ（拡張）】
-フェーズ2: 「さわったらどんな感じ？」「動く？動かない？」（感触・性質の観察）
-フェーズ3: 「なんでそうなってると思う？」「もし〜だったらどうなる？」子どもの仮説を「実験したらわかるね！」と次の行動につなげる。
-問いかけ辞典: 「濡らしたらどうなる？」「暗いところだとどう変わる？」「中はどうなってると思う？」`,
-    しゃかい:`【しゃかいレンズ（拡張）】
-フェーズ2: 「どこで見つけた？」「まわりに何がいっしょにあった？」（文脈・場所の観察）
-フェーズ3: 「だれがつくったんだろう？」「なんのためにあるの？」「これがなかった昔はどうしてたんだろう？」
-問いかけ辞典: 「これを使うのはだれ？」「外国にもある？」「100年後はどうなってる？」`,
-    じぶん:  `【じぶんレンズ（拡張）】
-フェーズ2: 「最初に気づいたのはいつ？」「見たとき、なんか感じた？」（体験・記憶の観察）
-フェーズ3: 「好き？嫌い？なんで？」「前に似たような経験した？」「正解はないよ。きみはどう感じた？」
-問いかけ辞典: 「もし自分がそれだったら？」「小さいころと今で感じ方ちがう？」「だれかに教えたい？」`,
+    ことば:  `【ことばレンズ】フェーズ3では「これを一言で言うとしたら？」「まるで〇〇みたい、はどう？」オノマトペを一緒に作る。気づきをことばで表現することが主役。`,
+    かず:    `【かずレンズ】フェーズ3では「どのくらいの大きさ？」「○○と比べると？」「いくつある？」パターンや規則性に気づかせる。`,
+    かがく:  `【かがくレンズ】フェーズ3では「なんでそうなってると思う？」「もし〜だったらどうなる？」子どもの仮説を「実験したらわかるね！」と次の行動につなげる。想像・そうぞうの問いはかがくレンズが主導する。`,
+    しゃかい:`【しゃかいレンズ】フェーズ3では「だれがつくったんだろう？」「なんのためにあるの？」「これがなかった昔はどうしてたんだろう？」想像・そうぞうの問いはしゃかいレンズも担う。`,
+    じぶん:  `【じぶんレンズ】フェーズ3では「好き？嫌い？なんで？」「前に似たような経験した？」「正解はないよ。きみはどう感じた？」気づきをじぶんの言葉にする（気づきタイプの役割を担う）。`,
+    ものしり:`【ものしりレンズ】フェーズ3では「この${S.odai?.name}にはなんて名前がついてるか知ってる？」「どんな仲間がいると思う？」「何がいちばんすごいと思う？」知識を楽しく広げる（ちしきタイプの役割を担う）。`,
   };
 
+  /* ──── フェーズレイヤー ──── */
   const phaseLayer = `【会話の4フェーズ — 必ずこの順番で進める】
 
 ■ フェーズ1「いまどこ？」（1往復）
@@ -511,10 +482,12 @@ ${cp.reactions.length > 0 ? `- このこの反応パターン: ${cp.reactions.sl
   場所・状況が掴めたら即フェーズ2へ。
 
 ■ フェーズ2「よくみると？」（1往復）
-  レンズの観察視点でお題をじっくり見させる。まだ「なぜ？」は聞かない。
+  五感（色・形・さわった感じ・音・におい）でお題を観察させる。まだ「なぜ？」は聞かない。
 
 ■ フェーズ3「どう思う？」（1〜2往復）
-  [レンズ]の問いかけ辞典を活用して「なぜ？」を深掘り。子どもが「〜だと思う」と言えたら成功。
+  [レンズ]の方向で「なぜ？」を深掘り。
+  ここで「悪ノリ」「逆視点」のルールを積極的に活用すること。
+  子どもが「〜だと思う」と言えたら成功。
 
 ■ フェーズ4「まとめ」（フェーズ3完了後）
   「じゃあ、${S.odai?.name}ってひとことで言うとどういうもの？」と聞く。
@@ -522,7 +495,6 @@ ${cp.reactions.length > 0 ? `- このこの反応パターン: ${cp.reactions.sl
   例：「今日のたからをしまってみよう！📦」
 
 【重要】フェーズは順番通りに進める。飛ばさない。戻らない。
-現在の会話数: ${userMsgCount}回目
 ${parentDue ? `→ このタイミングで「${u.parentName}はどう思うか聞いてみて！」と子どもを通じて促すこと` : ''}`;
 
   const finalRules = `【最重要・必ず守る】
@@ -530,38 +502,17 @@ ${parentDue ? `→ このタイミングで「${u.parentName}はどう思うか�
 ② 答えを先に言わない
 ③ 2文以内
 ④ フェーズ4でまとめを促すときは必ず「📦」を使う
-⑤ 問いかけのバリエーションは「問いかけ辞典」から選んで使う。同じ形の問いを繰り返さない`;
+⑤ 子どもの突拍子もない発言には必ず乗っかること（訂正禁止）`;
 
   return [
-    baseLayer,
+    stateLayer,
+    characterLayer,
+    dialogueLayer,
     ageLayers[u.ageGroup] || ageLayers.young,
-    emotionHints,
-    profileHints,
-    takaraInterest,
     lensLayers[S.lens] || '',
-    antiLensLayer,
-    funLayer,
     phaseLayer,
     finalRules,
   ].filter(Boolean).join('\n\n');
-}
-
-/* ── 子どもプロフィール更新（会話終了後に呼ぶ）── */
-async function updateChildProfile() {
-  try {
-    const conv = S.messages.filter(m => m.role === 'child').map(m => m.text).join('\n');
-    if (!conv) return;
-    const prompt = `以下は子どもの発言記録です。JSONのみ返してください（Markdownなし）。
-発言: ${conv}
-{"interests":["読み取れた好きそうなもの・気になりごとを1〜2個、なければ空配列"],"reactions":["発言パターン・口癖・思考の癖を1つ、なければ空配列"]}`;
-    const res = await callAI([{role:'user', content: prompt}], 'JSONのみ返してください。');
-    const data = JSON.parse(res.replace(/\`\`\`json|\`\`\`/g, '').trim());
-    if (data.interests) S.childProfile.interests = [...S.childProfile.interests, ...data.interests].slice(-6);
-    if (data.reactions) S.childProfile.reactions = [...S.childProfile.reactions, ...data.reactions].slice(-4);
-    S.childProfile.sessionCount++;
-  } catch(e) {
-    console.log('profile update skipped:', e);
-  }
 }
 
 /* ── ai.js: summarySystem ── */
@@ -572,24 +523,31 @@ function summarySystem() {
   }).join('\n');
   const maxChars    = S.user.ageGroup === 'young' ? 60 : S.user.ageGroup === 'middle' ? 100 : 150;
   const maxFindings = S.user.ageGroup === 'older' ? 3 : 2;
+  const prevProfile = JSON.stringify(S.user.profile || {});
 
-  return `あなたは「たからちゃん」です。以下の会話をもとにまとめを作ってください。
+  return `あなたは「たからちゃん」です。以下の会話をもとにまとめを作り、子どものプロフィールを更新してください。
 
 お題: ${S.odai?.name}　レンズ: ${S.lens}
 
 【会話記録】
 ${conv}
 
+【これまでの子どもプロフィール】
+${prevProfile}
+
 【重要ルール】
 - findingsは必ず上記の会話の中で実際に出た言葉・気づき・発見のみを使う
 - 会話にない言葉の補完・推測・創作は禁止
 - findingsは最大${maxFindings}個まで
 - 子どもが自分の言葉で言った「答え」があれば、それを最初のfindingにする
+- profileは会話から読み取れた「興味・傾向・成長」を簡潔なキーと値で記録する（既存profileとマージする）
+- profileのキーは日本語で（例：「好きなもの」「得意なこと」「よく使うことば」「最近の興味」）
 
 【出力形式】JSONのみ（Markdownなし）:
 {
   "findings": ["子どもが実際に言った言葉を活かした発見（1〜${maxFindings}個）"],
-  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${S.user.ageGroup === 'young' ? 'ひらがな多め。' : ''}"
+  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${S.user.ageGroup === 'young' ? 'ひらがな多め。' : ''}",
+  "profile": {"キー": "会話から読み取った値（簡潔に）"}
 }`;
 }
 
@@ -611,62 +569,43 @@ function renderChatHeader() {
     </div>`;
 }
 
-/* ── オンボーディング ── */
-function renderOnboard() {
-  const s = S.step;
-  const u = S.user;
-  const dots = [0,1].map(i =>
-    `<div class="step-dot ${i < s ? 'done' : i === s ? 'active' : ''}"></div>`
-  ).join('');
-
-  let body = '';
-  if (s === 0) {
-    body = `
-      <div class="form-label">お子さんの <strong>よびかた</strong></div>
-      <input class="form-input" id="ob-name" placeholder="れい：はるくん" value="${esc(u.name)}">
-      <div class="form-error" id="ob-name-err">なまえをいれてください</div>
-      <div class="form-label" style="margin-top:4px"><strong>ねんれい</strong>をえらんでね</div>
-      <div class="age-cards">
-        ${AGE_PROMPTS.map(a => `
-          <div class="sel-card ${u.ageGroup === a.id ? 'selected' : ''}" onclick="App.setAge('${a.id}')">
-            <span class="sel-card-icon">${a.icon}</span>
-            <div><div class="sel-card-name">${a.label}</div><div class="sel-card-desc">${a.desc}</div></div>
-          </div>`).join('')}
-      </div>`;
-  } else if (s === 1) {
-    body = `
-      <div class="form-label"><strong>いっしょにするひと</strong>のよびかた</div>
-      <div class="parent-chips">
-        ${PARENT_OPTS.map(p => `
-          <div class="parent-chip ${u.parentName === p ? 'selected' : ''}" onclick="App.setParent('${esc(p)}')">${esc(p)}</div>`).join('')}
-      </div>`;
-  }
-
-  return `
-    <div style="padding:20px 16px;display:flex;flex-direction:column;flex:1">
-      <div style="text-align:center;margin-bottom:20px">
-        <div style="font-size:2.5rem;margin-bottom:8px">🔍</div>
-        <div style="font-size:1.3rem;font-weight:bold;margin-bottom:4px">たから<em>さがし</em></div>
-        <div style="font-size:0.8rem;color:#888">まいにちのふとした きづきが、まなびのたからになる</div>
-      </div>
-      <div class="step-dots">${dots}</div>
-      ${body}
-      <div style="margin-top:auto;padding-top:16px">
-        <button class="btn-primary" onclick="App.obNext()">
-          ${s < 1 ? 'つぎへ ›' : 'はじめる 🔍'}
-        </button>
-        ${s > 0 ? `<button class="btn-secondary" onclick="App.obBack()">← もどる</button>` : ''}
-      </div>
-    </div>`;
-}
-
-/* ── お題入力 ── */
+/* ── お題入力（設定パネル付き） ── */
 function renderOdai() {
+  const u = S.user;
   const sampleChips = ODAI_SAMPLES.map(o => `
     <div class="odai-chip" onclick="App.selectOdaiSample(${JSON.stringify(JSON.stringify(o))})">${o.emoji} ${esc(o.name)}</div>
   `).join('');
+
+  const ageButtons = AGE_PROMPTS.map(a => `
+    <div class="sel-card ${u.ageGroup === a.id ? 'selected' : ''}" onclick="App.setAge('${a.id}')" style="flex-direction:row;align-items:center;gap:8px;padding:8px 10px;">
+      <span style="font-size:1.1rem">${a.icon}</span>
+      <div><div style="font-size:0.85rem;font-weight:bold">${a.label}</div></div>
+    </div>`).join('');
+
   return `
-    <div style="padding:20px 16px;display:flex;flex-direction:column;flex:1">
+    <div style="padding:16px 16px 0;display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:1.4rem">🔍</span>
+        <span style="font-size:1rem;font-weight:bold">たからさがし</span>
+      </div>
+      <button onclick="App.toggleSettings()" style="background:${S.settingsOpen?'#fff8ee':'#f5f5f5'};border:1.5px solid ${S.settingsOpen?'#e8860a':'#ddd'};border-radius:20px;padding:5px 12px;font-size:0.8rem;cursor:pointer;color:${S.settingsOpen?'#e8860a':'#666'}">
+        ⚙️ せってい
+      </button>
+    </div>
+
+    ${S.settingsOpen ? `
+    <div style="margin:10px 16px 0;padding:14px;background:#fff8ee;border:1.5px solid #ffd166;border-radius:14px">
+      <div style="font-size:0.8rem;font-weight:bold;margin-bottom:10px;color:#e8860a">⚙️ せってい</div>
+      <div class="form-label">すきなもの</div>
+      <input class="form-input" id="settings-likes" value="${esc(u.likes)}" placeholder="ポケモン・サッカー…" style="margin-bottom:10px">
+      <div class="form-label">ねんれい</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+        ${ageButtons}
+      </div>
+      <button class="btn-primary" onclick="App.saveSettings()" style="margin-bottom:0">💾 ほぞんする</button>
+    </div>` : ''}
+
+    <div style="padding:16px 16px;display:flex;flex-direction:column;flex:1">
       <h2>📝 きょうのたからをきめよう</h2>
       <div class="form-label">気になるものや、さいきん見つけたものは？</div>
       <input class="form-input" id="odai-input" placeholder="れい：あり、くも、でんしゃ…">
@@ -675,7 +614,6 @@ function renderOdai() {
       <div class="odai-list">${sampleChips}</div>
       <div style="margin-top:auto;padding-top:16px">
         <button class="btn-primary" onclick="App.submitOdai()">レンズをえらぶ ›</button>
-        <button class="btn-secondary" onclick="App.closeChatFlow()">← もどる</button>
       </div>
     </div>`;
 }
@@ -848,9 +786,7 @@ function render() {
   root.style.flexDirection = 'column';
   root.style.flex = '1';
 
-  if (S.flow === 'onboard') {
-    root.innerHTML = renderOnboard();
-  } else if (S.flow === 'odai') {
+  if (S.flow === 'odai') {
     root.innerHTML = renderOdai();
   } else if (S.flow === 'lens') {
     root.innerHTML = renderLens();
@@ -881,30 +817,15 @@ function scrollChat() {
 
 const App = {
 
-  /* ── オンボーディング ── */
-  obNext() {
-    const s = S.step;
-    if (s === 0) {
-      const name = $id('ob-name')?.value?.trim();
-      if (!name) {
-        $id('ob-name-err')?.classList.add('show');
-        return;
-      }
-      S.user.name  = name;
-    }
-    if (s < 1) {
-      S.step++;
-      render();
-    } else {
-      // 完了 → お題入力へ
-      S.flow = 'odai';
-      render();
-    }
+  /* ── 設定パネル ── */
+  toggleSettings() { S.settingsOpen = !S.settingsOpen; render(); },
+  saveSettings() {
+    const likes = $id('settings-likes')?.value?.trim() || '';
+    S.user.likes = likes;
+    S.settingsOpen = false;
+    render();
   },
-  obBack() {
-    if (S.step > 0) { S.step--; render(); }
-  },
-  setAge(a)    { S.user.ageGroup  = a; render(); },
+  setAge(a)    { S.user.ageGroup = a; render(); },
   setParent(p) { S.user.parentName = p; render(); },
 
   /* ── お題 ── */
@@ -1066,6 +987,10 @@ const App = {
       const data = JSON.parse(res.replace(/```json|```/g, '').trim());
       S.summaryItems   = data.findings || [];
       S.summaryOpinion = data.opinion  || '';
+      // プロフィール更新（マージ）
+      if (data.profile && typeof data.profile === 'object') {
+        S.user.profile = Object.assign({}, S.user.profile || {}, data.profile);
+      }
     } catch(err) {
       console.error('summary error:', err);
       S.summaryItems   = ['いっぱいかんがえた！'];
@@ -1073,8 +998,6 @@ const App = {
     }
     render();
 
-    // 子どもプロフィールを非同期で更新
-    updateChildProfile();
     // あしたやってみよう！を非同期で生成
     App._generateTomorrowHint();
   },
