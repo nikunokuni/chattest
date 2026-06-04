@@ -1,8 +1,20 @@
 /* ═══════════════════════════════════════════════════════
-   chat.js — チャット・サマリー関連
+   chat.js — AI通信・チャット・サマリー機能
    ═══════════════════════════════════════════════════════ */
 
-/* ── ai.js: フェーズ判定 ── */
+/* ── API呼び出し ── */
+async function callAI(messages, system) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, system }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API error');
+  return data.text;
+}
+
+/* ── フェーズ自動判定 ── */
 function detectPhaseFromAI(text, userMsgCount) {
   const phase4signals = [
     'ひとことでいうと','まとめてみよう','たからをしまおう',
@@ -17,7 +29,7 @@ function detectPhaseFromAI(text, userMsgCount) {
   return null;
 }
 
-/* ── ai.js: chatSystem ── */
+/* ── チャット用システムプロンプト ── */
 function chatSystem() {
   const u = S.user;
   const userMsgCount = S.messages.filter(m => m.role !== 'ai').length;
@@ -103,7 +115,7 @@ ${parentDue ? `→ このタイミングで「${u.parentName}はどう思うか�
   ].filter(Boolean).join('\n\n');
 }
 
-/* ── ai.js: summarySystem ── */
+/* ── サマリー用システムプロンプト ── */
 function summarySystem() {
   const conv = S.messages.map(m => {
     const who = m.role === 'ai' ? 'たからちゃん' : m.role === 'child' ? S.user.name || 'こども' : S.user.parentName;
@@ -132,152 +144,25 @@ ${conv}
 }`;
 }
 
-/* ── view.js: チャットヘッダー ── */
-function renderChatHeader() {
-  const lens = LENSES.find(l => l.id === S.lens);
-  return `
-    <div class="chat-header">
-      <div class="chat-header-info">
-        <span class="chat-header-emoji">${esc(S.odai?.emoji || '')}</span>
-        <span class="chat-header-name">${esc(S.odai?.name || '')}</span>
-        ${lens ? `<span class="chat-header-lens">${lens.icon} ${esc(lens.name)}</span>` : ''}
-      </div>
-      <button class="back-btn" onclick="App.closeChatFlow()">◀ もどる</button>
-    </div>`;
+/* ── チャットUIヘルパー ── */
+function bindChatEvents() {
+  const ci = $id('chat-in');
+  if (ci) {
+    ci.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); App.sendChat(); }
+    });
+  }
 }
 
-/* ── view.js: チャット画面 ── */
-function renderChat() {
-  const u = S.user;
-  const isPhase4 = S.chatPhase >= 4;
-  const phaseDots = [1,2,3,4].map(n => `
-    <div class="phase-dot ${S.chatPhase > n ? 'done' : S.chatPhase === n ? 'active' : ''}"></div>
-    ${n < 4 ? '<div class="phase-line"></div>' : ''}`).join('');
-
-  return `
-    ${renderChatHeader()}
-    <div class="phase-bar">${phaseDots}</div>
-    <div class="speaker-row">
-      <div class="speaker-btn ${S.speaker === 'child'  ? 'active-child'  : ''}" onclick="App.setSpeaker('child')">👦 ${esc(u.name || 'こども')}</div>
-      <div class="speaker-btn ${S.speaker === 'parent' ? 'active-parent' : ''}" onclick="App.setSpeaker('parent')">👨 ${esc(u.parentName)}</div>
-    </div>
-    <div class="chat-area" id="chat-area">
-      ${S.messages.map(renderBubble).join('')}
-      ${S.isLoading ? `
-        <div class="bubble-ai">
-          <div class="ai-avatar">🔍</div>
-          <div class="bubble-ai-text">
-            <div class="typing-dots"><span></span><span></span><span></span></div>
-          </div>
-        </div>` : ''}
-      ${S.lastError ? `
-        <div class="chat-error-row">
-          ⚠️ つながらなかったよ
-          <button class="retry-btn" onclick="App.retryLastSend()">もう一度</button>
-        </div>` : ''}
-    </div>
-    <div class="chat-input-wrap">
-      <input class="chat-input" id="chat-in"
-        placeholder="${S.speaker === 'child' ? 'かんがえてみよう…' : esc(u.parentName) + 'もかんがえてみよう…'}"
-        ${S.isLoading ? 'disabled' : ''}>
-      <button class="chat-send" onclick="App.sendChat()" ${S.isLoading ? 'disabled' : ''}>➤</button>
-    </div>
-    ${isPhase4 ? `
-      <button class="finish-btn" onclick="App.goSummary()">📦 たからをしまう</button>` : ''}`;
+function scrollChat() {
+  setTimeout(() => {
+    const el = $id('chat-area');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 80);
 }
 
-/* ── view.js: チャットバブル ── */
-function renderBubble(m) {
-  if (m.role === 'ai') return `
-    <div class="bubble-ai">
-      <div class="ai-avatar">🔍</div>
-      <div class="bubble-ai-text">${aiText(m.text)}</div>
-    </div>`;
-  if (m.role === 'child') return `
-    <div class="bubble-child"><div class="bubble-child-text">${esc(m.text)}</div></div>`;
-  return `
-    <div class="bubble-parent-wrap">
-      <div class="bubble-parent-who">${esc(S.user.parentName)}</div>
-      <div style="display:flex;justify-content:flex-end">
-        <div class="bubble-parent-text">${esc(m.text)}</div>
-      </div>
-    </div>`;
-}
-
-/* ── view.js: サマリー画面 ── */
-function renderSummary() {
-  const items = S.summaryItems;
-  const paras = S.summaryOpinion.split(/\n/).filter(Boolean);
-  const colors = ['#e8860a','#0a9396','#e76f51','#52b788','#9b89c4','#ffd166'];
-
-  return `
-    ${renderChatHeader()}
-    <div style="flex:1;overflow-y:auto;padding:0 16px 20px">
-      <div class="summary-hero">
-        <span class="summary-hero-emoji">${esc(S.odai?.emoji || '🔍')}</span>
-        <div class="summary-hero-ttl">たからみつかった！</div>
-        <div class="summary-hero-sub">${esc(S.odai?.name || '')} · ${esc(S.lens || '')}レンズ</div>
-      </div>
-
-      <!-- きょうのたから -->
-      <div class="findings-card">
-        <div class="findings-label">✨ きょうみつけたたから</div>
-        ${items.length === 0
-          ? `<div style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:#aaa">
-               <span class="spinner"></span>まとめているよ…
-             </div>`
-          : items.map((f, i) => `
-              <div class="finding-item">
-                <div class="finding-dot" style="background:${colors[i % colors.length]}"></div>
-                <div class="finding-text">${esc(f)}</div>
-              </div>`).join('')}
-      </div>
-
-      <!-- AIのかんがえ -->
-      <div class="ai-opinion-card">
-        <div class="ai-opinion-toggle" onclick="App.toggleOpinion()">
-          <div class="ai-opinion-label">💡 AIのかんがえ（おとな向け）</div>
-          <div>▾</div>
-        </div>
-        <div class="ai-opinion-body" style="display:${S.opinionOpen ? 'block' : 'none'}">
-          ${paras.length > 0
-            ? paras.map(p => `<div class="ai-opinion-para">${esc(p)}</div>`).join('')
-            : `<div style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:#aaa">
-                 <span class="spinner"></span>よみこみちゅう…
-               </div>`}
-        </div>
-      </div>
-
-      <!-- あしたやってみよう！ -->
-      <div class="tomorrow-card">
-        <div class="tomorrow-label">🌱 あしたやってみよう！</div>
-        ${!S.tomorrowHint
-          ? `<div class="tomorrow-loading"><span class="spinner"></span><span>かんがえているよ…</span></div>`
-          : `<div class="tomorrow-text">${esc(S.tomorrowHint)}</div>`}
-      </div>
-
-      <!-- きろくノート -->
-      <div class="note-card">
-        <div class="note-label">📓 きろくノート</div>
-        <div style="font-size:0.78rem;color:#aaa;margin-bottom:6px">きょうきづいたこと、おもったことをかいてみよう</div>
-        <textarea class="note-textarea" id="note-input" placeholder="（じゆうにかいてね）">${esc(S.currentNote)}</textarea>
-        <button class="note-save-btn" onclick="App.saveNote()">💾 ほぞんする</button>
-      </div>
-
-      <!-- アクションボタン -->
-      <div class="summary-action-row">
-        <button class="summary-action-btn summary-action-again" onclick="App.doAgain()">
-          <span>🔄</span><span>べつのレンズで</span>
-        </button>
-        <button class="summary-action-btn summary-action-next" onclick="App.nextOdai()">
-          <span>✨</span><span>つぎのおだい</span>
-        </button>
-      </div>
-    </div>`;
-}
-
-/* ── app.js: チャット関連操作 ── */
-const ChatApp = {
+/* ── Appにチャット・サマリーメソッドを追加 ── */
+Object.assign(App, {
 
   /* ── チャット開始 ── */
   async startChat() {
@@ -324,7 +209,7 @@ const ChatApp = {
     render();
     scrollChat();
 
-    const payload      = ChatApp._buildApiMsgs();
+    const payload      = App._buildApiMsgs();
     S.lastSendPayload  = payload;
     const userMsgCount = S.messages.filter(m => m.role !== 'ai').length;
 
@@ -349,6 +234,7 @@ const ChatApp = {
     scrollChat();
   },
 
+  /* ── 再送信 ── */
   async retryLastSend() {
     if (!S.lastSendPayload || S.isLoading) return;
     S.isLoading = true; S.lastError = false;
@@ -365,6 +251,7 @@ const ChatApp = {
     scrollChat();
   },
 
+  /* ── APIメッセージ組み立て ── */
   _buildApiMsgs() {
     const apiMsgs = [];
     for (const m of S.messages) {
@@ -381,7 +268,7 @@ const ChatApp = {
     return apiMsgs;
   },
 
-  /* ── サマリー ── */
+  /* ── サマリー生成 ── */
   async goSummary() {
     S.flow           = 'summary';
     S.summaryItems   = [];
@@ -404,9 +291,10 @@ const ChatApp = {
     }
     render();
 
-    ChatApp._generateTomorrowHint();
+    App._generateTomorrowHint();
   },
 
+  /* ── あしたのヒント生成 ── */
   async _generateTomorrowHint() {
     if (S.tomorrowHint) return;
     try {
@@ -427,32 +315,4 @@ const ChatApp = {
     render();
   },
 
-  toggleOpinion() { S.opinionOpen = !S.opinionOpen; render(); },
-
-  saveNote() {
-    const txt = $id('note-input')?.value?.trim() || '';
-    S.currentNote = txt;
-    const btn = document.querySelector('.note-save-btn');
-    if (btn) {
-      btn.textContent = '✓ ほぞんしたよ！';
-      setTimeout(() => { btn.textContent = '💾 ほぞんする'; }, 1500);
-    }
-  },
-
-  doAgain() {
-    S.flow      = 'lens';
-    S.lens      = null;
-    S.messages  = [];
-    S.chatPhase = 1;
-    render();
-  },
-
-  nextOdai() {
-    S.flow      = 'odai';
-    S.odai      = null;
-    S.lens      = null;
-    S.messages  = [];
-    S.chatPhase = 1;
-    render();
-  },
-};
+});
