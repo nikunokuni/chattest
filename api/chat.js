@@ -1,8 +1,17 @@
 export default async function handler(req, res) {
-  // CORS — GitHub Pages のドメインを許可
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS — 同一 Vercel プロジェクト＋ GitHub Pages を許可
+  const allowedOrigins = [
+    'https://chattest-mu.vercel.app',  // Vercel 本番
+    /^https:\/\/chattest-mu-.*\.vercel\.app$/,  // Vercel プレビュー
+  ];
+  const origin = req.headers.origin || '';
+  const allowed = allowedOrigins.some(o =>
+    typeof o === 'string' ? o === origin : o.test(origin)
+  );
+  res.setHeader('Access-Control-Allow-Origin', allowed ? origin : '');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (req.method !== 'POST') {
@@ -26,7 +35,7 @@ export default async function handler(req, res) {
 
   try {
     const apiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
