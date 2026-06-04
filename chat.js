@@ -6,7 +6,7 @@
 
 // Vercel にデプロイ後、実際の URL に書き換えてください
 // 例: https://your-project.vercel.app/api/chat
-const API_ENDPOINT = 'https://your-project.vercel.app/api/chat';
+const API_ENDPOINT = 'https://chattest-mu.vercel.app/api/chat';
 
 async function callAI(messages, system) {
   const res = await fetch(API_ENDPOINT, {
