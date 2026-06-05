@@ -45,9 +45,8 @@ const PROMPT_PHASE_1 = `【フェーズ1】「どこで見つけたの？」場�
 
 const PROMPT_PHASE_2 = `【フェーズ2】レンズの視点でお題を観察させる。まだ「なぜ？」は聞かない。`;
 
-const PROMPT_PHASE_3 = `【フェーズ3】レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。
-深掘りが1往復できたら、返答の末尾に「たからをしまう？それとももっとたんけんする？」と必ず確認する。`;
-
+const PROMPT_PHASE_3 = `【フェーズ3】レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。`;
+const PROMPT_CTX_phase3_decision = `【必須ルール】今回が深掘りの最後のターンです。返答の末尾に、必ず「たからをしまう？それとももっとたんけんする？」という問いかけを書いてください。これ以外のタイミングでは絶対にこの問いかけを書かないでください。`;
 const PROMPT_PHASE_4 = (odaiName) =>
   `【フェーズ4】「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
@@ -137,7 +136,7 @@ async function checkDeepInsight(childText) {
 /* ── チャット用システムプロンプト ──
    構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [要約データ]
    ─────────────────────────────────── */
-function chatSystem({ isInterested = true, showParentBridge = false } = {}) {
+function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false } = {}) {
   const u = S.user;
 
   // ① 基本：キャラ・話し方・子どもの情報
@@ -167,10 +166,11 @@ const phase = {
 }[S.chatPhase] || PROMPT_PHASE_1;
 
 const ctx = [
-  S.currentSummary ? `【ここまでの気づき】${S.currentSummary}` : '',
-  !isInterested    ? PROMPT_CTX_not_interested : '',
-  showParentBridge ? PROMPT_CTX_parent_bridge(u.parentName) : '',
-].filter(Boolean).join('\n');
+    S.currentSummary ? `【ここまでの気づき】${S.currentSummary}` : '',
+    !isInterested    ? PROMPT_CTX_not_interested : '',
+    showParentBridge ? PROMPT_CTX_parent_bridge(u.parentName) : '',
+    showPhase3Decision ? PROMPT_CTX_phase3_decision : '', // ←追加
+  ].filter(Boolean).join('\n');
 
   return [base, age, lens, phase, ctx].filter(Boolean).join('\n\n');
 }
@@ -245,6 +245,9 @@ Object.assign(App, {
     S.speaker         = 'child';
     S.currentSummary  = '';
     S.parentBridgeDone = false;
+    S.phase3Turns         = 0;
+    S.phase3DecisionAsked = false;
+    S.showDecisionButtons = false;
     render();
 
     const hour      = new Date().getHours();
@@ -284,6 +287,7 @@ Object.assign(App, {
   /* ── フェーズ3完了後：「たからをしまう」を選択 ── */
   chooseSaveNow() {
     S.chatPhase = 4;
+    S.showDecisionButtons = false;
     render();
     App._triggerPhaseMessage();
   },
@@ -291,6 +295,7 @@ Object.assign(App, {
   /* ── フェーズ3完了後：「もっとたんけんする」を選択 ── */
   chooseKeepExploring() {
     S.chatPhase = 5;
+    S.showDecisionButtons = false;
     render();
     App._triggerPhaseMessage();
   },
@@ -332,7 +337,16 @@ Object.assign(App, {
     try {
       const interest = await App._checkInterest(txt);
       const isInterested = interest?.is_interested !== false;
-
+    let showPhase3Decision = false;
+      if (S.chatPhase === 3) {
+        S.phase3Turns = (S.phase3Turns || 0) + 1;
+        // 3回目の発言を受けた時のみ1回だけ実行する
+        if (S.phase3Turns === 3 && !S.phase3DecisionAsked) {
+          showPhase3Decision = true;
+          S.phase3DecisionAsked = true;
+          S.showDecisionButtons = true; // UIボタン出現フラグ
+        }
+      }
       let showParentBridge = false;
       if (S.chatPhase === 3 && !S.parentBridgeDone) {
         const isDeep = await checkDeepInsight(txt);
@@ -351,9 +365,12 @@ Object.assign(App, {
       if (nextPhase && nextPhase > S.chatPhase) {
         S.currentSummary = await App._buildPhaseSummary();
         S.chatPhase = nextPhase;
+          if (S.chatPhase === 3) {
+          S.phase3Turns = 0;
+        }
       }
 
-      const systemPrompt = chatSystem({ isInterested, showParentBridge });
+     const systemPrompt = chatSystem({ isInterested, showParentBridge, showPhase3Decision });
       const minimalPayload = App._buildMinimalMsg(txt);
       const text = await callAI(minimalPayload, systemPrompt);
       S.messages.push({ role:'ai', text });
