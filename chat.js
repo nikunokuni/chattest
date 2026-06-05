@@ -47,6 +47,7 @@ const PROMPT_PHASE_2 = `【フェーズ2】レンズの視点でお題を観察�
 
 const PROMPT_PHASE_3 = `【フェーズ3】レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。`;
 const PROMPT_CTX_phase3_decision = `【必須ルール】今回が深掘りの最後のターンです。返答の末尾に、必ず「たからをしまう？それとももっとたんけんする？」という問いかけを書いてください。これ以外のタイミングでは絶対にこの問いかけを書かないでください。`;
+const PROMPT_CTX_phase3_likes = (likes) => `【特別な指示】子どもの好きなこと「${likes}」をお題と比較したり、例え話に交えたりして問いかけてください。`;
 const PROMPT_PHASE_4 = (odaiName) =>
   `【フェーズ4】「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
@@ -136,7 +137,7 @@ async function checkDeepInsight(childText) {
 /* ── チャット用システムプロンプト ──
    構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [要約データ]
    ─────────────────────────────────── */
-function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false } = {}) {
+function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
   const u = S.user;
 
   // ① 基本：キャラ・話し方・子どもの情報
@@ -169,7 +170,8 @@ const ctx = [
     S.currentSummary ? `【ここまでの気づき】${S.currentSummary}` : '',
     !isInterested    ? PROMPT_CTX_not_interested : '',
     showParentBridge ? PROMPT_CTX_parent_bridge(u.parentName) : '',
-    showPhase3Decision ? PROMPT_CTX_phase3_decision : '', // ←追加
+    showPhase3Decision ? PROMPT_CTX_phase3_decision : '',
+    (showPhase3Likes && u.likes) ? PROMPT_CTX_phase3_likes(u.likes) : '', // ←追加
   ].filter(Boolean).join('\n');
 
   return [base, age, lens, phase, ctx].filter(Boolean).join('\n\n');
@@ -338,8 +340,13 @@ Object.assign(App, {
       const interest = await App._checkInterest(txt);
       const isInterested = interest?.is_interested !== false;
     let showPhase3Decision = false;
+    let showPhase3Likes    = false; 
       if (S.chatPhase === 3) {
         S.phase3Turns = (S.phase3Turns || 0) + 1;
+         // 子どもが1回返答した後の次のAIの問い（フェーズ3の2回目）で「好きなこと」を提示する
+        if (S.phase3Turns === 1) {
+          showPhase3Likes = true;
+        }
         // 3回目の発言を受けた時のみ1回だけ実行する
         if (S.phase3Turns === 3 && !S.phase3DecisionAsked) {
           showPhase3Decision = true;
@@ -370,7 +377,7 @@ Object.assign(App, {
         }
       }
 
-     const systemPrompt = chatSystem({ isInterested, showParentBridge, showPhase3Decision });
+    const systemPrompt = chatSystem({ isInterested, showParentBridge, showPhase3Decision, showPhase3Likes });
       const minimalPayload = App._buildMinimalMsg(txt);
       const text = await callAI(minimalPayload, systemPrompt);
       S.messages.push({ role:'ai', text });
