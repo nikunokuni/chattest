@@ -3,7 +3,7 @@
    ════════════════════════════════ */
 
 // ── 基本キャラクター ──
-export const PROMPT_BASE_CHAR = (odaiName, userName, userLikes, memCtx) => [
+const PROMPT_BASE_CHAR = (odaiName, userName, userLikes, memCtx) => [
   `あなたは「たからちゃん」です。お題「${odaiName}」を探索中。`,
   `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
   `【子ども】呼び方:${userName || 'きみ'}${userLikes ? ` / 好き:${userLikes}（自然なタイミングで絡める）` : ''}`,
@@ -11,27 +11,27 @@ export const PROMPT_BASE_CHAR = (odaiName, userName, userLikes, memCtx) => [
 ].filter(Boolean).join('\n');
 
 // ── 年齢別ことば・ユーモア ──
-export const PROMPT_AGE_young = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。五感で表現する。
+const PROMPT_AGE_young = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。五感で表現する。
 【ユーモア】擬音・擬態語で笑わせる。「ぷにぷに！」「ぼよよん！」など体感できるおふざけを1つ混ぜてOK。`;
 
-export const PROMPT_AGE_middle = `【ことば】小1-2漢字まで。1文25文字以内。「なぜ？」まで扱える。
+const PROMPT_AGE_middle = `【ことば】小1-2漢字まで。1文25文字以内。「なぜ？」まで扱える。
 【ユーモア】「もしかして〇〇だったりして？」など軽いボケを混ぜてOK。子どもがツッコみたくなる問いかけも有効。`;
 
-export const PROMPT_AGE_older = `【ことば】小学漢字OK。1文40文字以内。仮説・根拠・比較まで扱える。
+const PROMPT_AGE_older = `【ことば】小学漢字OK。1文40文字以内。仮説・根拠・比較まで扱える。
 【ユーモア】ちょっと意外な視点や逆張りで知的なおもしろさを出す。「実はそれ、〇〇と同じ仕組みかも？」など。`;
 
-export const PROMPT_AGE_default = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。`;
+const PROMPT_AGE_default = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。`;
 
 // ── レンズ別視点 ──
-export const PROMPT_LENS_kotoba   = `【レンズ：ことば】観察では色・形・五感を引き出す。深掘りでは「一言で言うと？」オノマトペを一緒に作る。`;
-export const PROMPT_LENS_jibun    = `【レンズ：じぶん】観察では色・形・五感を引き出す。深掘りでは「好き？嫌い？なんで？」自分の感覚を掘る。`;
-export const PROMPT_LENS_monoshiri= `【レンズ：ものしり】観察では名前・なかま・ちがいを引き出す。深掘りでは「どんななかま？」「名前の由来は？」`;
-export const PROMPT_LENS_kagaku   = `【レンズ：かがく】観察では「中はどうなってる？」を問う。深掘りでは「なんでそうなってる？」仮説を引き出す。`;
-export const PROMPT_LENS_shakai   = `【レンズ：しゃかい】観察では「中はどうなってる？」を問う。深掘りでは「だれが作った？」「なんのため？」`;
-export const PROMPT_LENS_kazu     = `【レンズ：かず】観察では「どのくらい？いくつ？」を問う。深掘りでは「○○と比べると？」パターンに気づかせる。`;
+const PROMPT_LENS_kotoba   = `【レンズ：ことば】観察では色・形・五感を引き出す。深掘りでは「一言で言うと？」オノマトペを一緒に作る。`;
+const PROMPT_LENS_jibun    = `【レンズ：じぶん】観察では色・形・五感を引き出す。深掘りでは「好き？嫌い？なんで？」自分の感覚を掘る。`;
+const PROMPT_LENS_monoshiri= `【レンズ：ものしり】観察では名前・なかま・ちがいを引き出す。深掘りでは「どんななかま？」「名前の由来は？」`;
+const PROMPT_LENS_kagaku   = `【レンズ：かがく】観察では「中はどうなってる？」を問う。深掘りでは「なんでそうなってる？」仮説を引き出す。`;
+const PROMPT_LENS_shakai   = `【レンズ：しゃかい】観察では「中はどうなってる？」を問う。深掘りでは「だれが作った？」「なんのため？」`;
+const PROMPT_LENS_kazu     = `【レンズ：かず】観察では「どのくらい？いくつ？」を問う。深掘りでは「○○と比べると？」パターンに気づかせる。`;
 
 // 引き当て用マップ（chat.jsのlens変数で使う）
-export const PROMPT_LENS_MAP = {
+const PROMPT_LENS_MAP = {
   ことば:   PROMPT_LENS_kotoba,
   じぶん:   PROMPT_LENS_jibun,
   ものしり: PROMPT_LENS_monoshiri,
@@ -41,48 +41,48 @@ export const PROMPT_LENS_MAP = {
 };
 
 // ── フェーズ別指示 ──
-export const PROMPT_PHASE_1 = `【フェーズ1】「どこで見つけたの？」場所・状況を1つ聞く。`;
+const PROMPT_PHASE_1 = `【フェーズ1】「どこで見つけたの？」場所・状況を1つ聞く。`;
 
-export const PROMPT_PHASE_2 = `【フェーズ2】レンズの視点でお題を観察させる。まだ「なぜ？」は聞かない。`;
+const PROMPT_PHASE_2 = `【フェーズ2】レンズの視点でお題を観察させる。まだ「なぜ？」は聞かない。`;
 
-export const PROMPT_PHASE_3 = `【フェーズ3】レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。
+const PROMPT_PHASE_3 = `【フェーズ3】レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。
 深掘りが1往復できたら、返答の末尾に「たからをしまう？それとももっとたんけんする？」と必ず確認する。`;
 
-export const PROMPT_PHASE_4 = (odaiName) =>
+const PROMPT_PHASE_4 = (odaiName) =>
   `【フェーズ4】「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
-export const PROMPT_PHASE_5 = `【フェーズ5：もっとたんけん】子どもがまだ探求を続けたいと選んだ。レンズの視点でさらに深掘りする。
+const PROMPT_PHASE_5 = `【フェーズ5：もっとたんけん】子どもがまだ探求を続けたいと選んだ。レンズの視点でさらに深掘りする。
 【必須ルール】直前の子どもの回答をそのまま受け取らず、必ず「逆から見る・別の角度に変える・ひっくり返す」で次の問いを作ること。
 例：「大きい→じゃあいちばん小さいところは？」「好き→でも嫌いなところはある？」「丸い→もし四角だったら？」
 同じ方向の掘り下げは禁止。毎回視点をずらすこと。`;
 
 // ── フラグ別コンテキスト ──
-export const PROMPT_CTX_not_interested = `【注意】興味が薄れています。別の角度から引き直してください。`;
+const PROMPT_CTX_not_interested = `【注意】興味が薄れています。別の角度から引き直してください。`;
 
-export const PROMPT_CTX_parent_bridge = (parentName) =>
+const PROMPT_CTX_parent_bridge = (parentName) =>
   `【今回】深い気づきが出ました。「${parentName}はどう思うか聞いてみて！」と子どもを通じて1回だけ促すこと。`;
 
 // ── 判定系システムプロンプト ──
-export const PROMPT_SYS_deep_insight = `JSONのみ返してください（Markdownなし）。子どもの発言が自分なりの答えや深い気づきを含むか判定します。`;
+const PROMPT_SYS_deep_insight = `JSONのみ返してください（Markdownなし）。子どもの発言が自分なりの答えや深い気づきを含むか判定します。`;
 
-export const PROMPT_SYS_interest = `JSONのみ返してください（Markdownなし）。子どもの興味・意欲を判定するアシスタントです。`;
+const PROMPT_SYS_interest = `JSONのみ返してください（Markdownなし）。子どもの興味・意欲を判定するアシスタントです。`;
 
-export const PROMPT_SYS_summary_builder = `ここまでの会話の要点を箇条書きで簡潔にまとめるアシスタントです。JSONは不要です。`;
+const PROMPT_SYS_summary_builder = `ここまでの会話の要点を箇条書きで簡潔にまとめるアシスタントです。JSONは不要です。`;
 
-export const PROMPT_SYS_tomorrow_hint = `JSONのみ返してください（Markdownなし）。子どもが実践できる具体的な行動を1文で。`;
+const PROMPT_SYS_tomorrow_hint = `JSONのみ返してください（Markdownなし）。子どもが実践できる具体的な行動を1文で。`;
 
 // ── ユーザープロンプト（判定・要約用） ──
-export const PROMPT_USER_deep_insight = (childText) =>
+const PROMPT_USER_deep_insight = (childText) =>
   `子どもの発言:「${childText}」
 これは「深い気づき・自分なりの答え」が出た瞬間か？JSONのみ: {"is_deep": true/false}`;
 
-export const PROMPT_USER_interest = (recent, childText) =>
+const PROMPT_USER_interest = (recent, childText) =>
   `以下は子どもとAIの直近の会話です。子どもの最新の返答から興味・意欲を判定してください。\n\n${recent}\n\n子どもの最新の一言:「${childText}」\n\nJSONのみ返してください: {"is_interested": true/false, "reason": "判定理由を一言で"}`;
 
-export const PROMPT_USER_phase_summary = (odaiName, conv) =>
+const PROMPT_USER_phase_summary = (odaiName, conv) =>
   `以下はお題「${odaiName}」の探索会話です。ここまでの子どもの気づきと発言を3行以内で簡潔にまとめてください。\n\n${conv}`;
 
-export const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
+const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
   `子ども向けアプリで、お題「${odaiName}」をレンズ「${lensName}」で探索し、「${findingsTxt}」を発見しました。明日の日常で意識できることを、子ども（3〜9歳）向けに1文でやさしく提案してください。JSONのみ: {"hint":"ひらがな・ことばあそびで1文"}`;
 
 /* ═══════════════════════════════════════════════════════
@@ -92,7 +92,6 @@ export const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
 /* ── API呼び出し ── */
 
 // Vercel にデプロイ後、実際の URL に書き換えてください
-// 例: https://your-project.vercel.app/api/chat
 const API_ENDPOINT = 'https://chattest-mu.vercel.app/api/chat';
 
 async function callAI(messages, system) {
@@ -141,7 +140,7 @@ async function checkDeepInsight(childText) {
 function chatSystem({ isInterested = true, showParentBridge = false } = {}) {
   const u = S.user;
 
-  // ① 基本：キャラ・話し方・子どもの情報（年齢・レンズに依存しない固定部分）
+  // ① 基本：キャラ・話し方・子どもの情報
   const memCtx = App._buildMemoryContext ? App._buildMemoryContext() : '';
   const base = [
     `あなたは「たからちゃん」です。お題「${S.odai?.name}」を探索中。`,
@@ -236,7 +235,7 @@ Object.assign(App, {
   /* ── チャット開始 ── */
   async startChat() {
     if (!S.lens) return;
-    App.loadTakaraMemory(); // 起動時に記憶を読み込む
+    App.loadTakaraMemory();
     S.messages        = [];
     S.flow            = 'chat';
     S.isLoading       = true;
@@ -251,20 +250,18 @@ Object.assign(App, {
     const hour      = new Date().getHours();
     const timeOfDay = hour < 11 ? 'あさ' : hour < 17 ? 'ひるま' : 'よる';
 
-    // 5W1H + 感情・比較・逆張りなどのバリエーション
     const openingVariants = [
-      `${timeOfDay}、${S.odai?.name}をどこで見つけたの？`,           // Where
-      `${timeOfDay}、${S.odai?.name}を見つけたのはいつ？`,           // When
-      `${timeOfDay}、${S.odai?.name}って、さわったことある？`,        // How（体験）
-      `${timeOfDay}、${S.odai?.name}を最初に見たとき、どう思った？`, // 感情
-      `${timeOfDay}、${S.odai?.name}って、なんのためにあると思う？`, // Why
-      `${timeOfDay}、${S.odai?.name}を見て、なにが気になった？`,     // What
-      `${timeOfDay}、${S.odai?.name}、だれかに見せたいと思う？`,     // Who
-      `${timeOfDay}、${S.odai?.name}と、なにかにてるものってある？`, // 比較
+      `${timeOfDay}、${S.odai?.name}をどこで見つけたの？`,
+      `${timeOfDay}、${S.odai?.name}を見つけたのはいつ？`,
+      `${timeOfDay}、${S.odai?.name}って、さわったことある？`,
+      `${timeOfDay}、${S.odai?.name}を最初に見たとき、どう思った？`,
+      `${timeOfDay}、${S.odai?.name}って、なんのためにあると思う？`,
+      `${timeOfDay}、${S.odai?.name}を見て、なにが気になった？`,
+      `${timeOfDay}、${S.odai?.name}、だれかに見せたいと思う？`,
+      `${timeOfDay}、${S.odai?.name}と、なにかにてるものってある？`,
     ];
     const opening = openingVariants[Math.floor(Math.random() * openingVariants.length)];
 
-    // たからちゃんの記憶があれば反映
     const memoryNote = S.takaraMemory?.lastTopic
       ? `前回「${S.takaraMemory.lastTopic}」を一緒に探検したよ。それも活かして自然に会話を始めてください。`
       : '';
@@ -288,7 +285,6 @@ Object.assign(App, {
   chooseSaveNow() {
     S.chatPhase = 4;
     render();
-    // フェーズ4の問いかけをAIに生成させる
     App._triggerPhaseMessage();
   },
 
@@ -334,11 +330,9 @@ Object.assign(App, {
     const userMsgCount = S.messages.filter(m => m.role !== 'ai').length;
 
     try {
-      // ── 興味判定（JSON メタデータ）──
       const interest = await App._checkInterest(txt);
       const isInterested = interest?.is_interested !== false;
 
-      // ── フェーズ3中：深い気づき判定（親橋渡しは1回のみ）──
       let showParentBridge = false;
       if (S.chatPhase === 3 && !S.parentBridgeDone) {
         const isDeep = await checkDeepInsight(txt);
@@ -348,27 +342,23 @@ Object.assign(App, {
         }
       }
 
-      // ── フェーズ進行判断（フェーズ3→5はsendChat外でUIが制御、ここはカウントのみ）──
       const detected = detectPhaseFromAI('', userMsgCount);
       const nextPhase = detected && detected > S.chatPhase && S.chatPhase < 3 ? detected
         : (!detected && userMsgCount >= 1 && S.chatPhase < 2) ? 2
         : (!detected && userMsgCount >= 3 && S.chatPhase < 3) ? 3
         : null;
 
-      // ── フェーズ移動前に要約を更新 ──
       if (nextPhase && nextPhase > S.chatPhase) {
         S.currentSummary = await App._buildPhaseSummary();
         S.chatPhase = nextPhase;
       }
 
-      // ── AI 返答生成（最新の子どもの発言1件のみ送る）──
       const systemPrompt = chatSystem({ isInterested, showParentBridge });
       const minimalPayload = App._buildMinimalMsg(txt);
       const text = await callAI(minimalPayload, systemPrompt);
       S.messages.push({ role:'ai', text });
       S.lastError = false;
 
-      // ── AI 返答からフェーズ4シグナルを拾う（フェーズ5中は無視）──
       if (S.chatPhase !== 5) {
         const detectedFromReply = detectPhaseFromAI(text, userMsgCount);
         if (detectedFromReply && detectedFromReply > S.chatPhase) {
@@ -404,13 +394,13 @@ Object.assign(App, {
     scrollChat();
   },
 
-  /* ── APIメッセージ組み立て（最小構成：子どもの最新発言1件のみ） ── */
+  /* ── APIメッセージ組み立て ── */
   _buildMinimalMsg(childText) {
     const label = S.user.name || 'こども';
     return [{ role: 'user', content: `[${label}] ${childText}` }];
   },
 
-  /* ── フル会話履歴の組み立て（サマリー・興味判定など内部用） ── */
+  /* ── フル会話履歴の組み立て ── */
   _buildApiMsgs() {
     const apiMsgs = [];
     for (const m of S.messages) {
@@ -427,7 +417,7 @@ Object.assign(App, {
     return apiMsgs;
   },
 
-  /* ── 興味判定（JSONメタデータ） ── */
+  /* ── 興味判定 ── */
   async _checkInterest(childText) {
     try {
       const recent = S.messages.slice(-4).map(m => {
@@ -487,9 +477,7 @@ Object.assign(App, {
       S.summaryMission = 'あしたそとで、なにかみつけてきてね！';
     }
 
-    // ── たからちゃんの記憶を更新 ──
     App._updateTakaraMemory();
-
     render();
     App._generateTomorrowHint();
   },
@@ -514,21 +502,17 @@ Object.assign(App, {
     render();
   },
 
-  /* ════════════════════════════════════════════
-     たからちゃんの記憶・育成ゲーム機能
-     ════════════════════════════════════════════ */
-
-  /* ── 記憶を更新（セッション終了時に呼ぶ） ── */
+  /* ── 記憶を更新 ── */
   _updateTakaraMemory() {
     const mem = S.takaraMemory || {
       sessions:    0,
       lastTopic:   '',
-      topicLog:    [],   // 過去のお題リスト
-      lensLog:     [],   // 使ったレンズ履歴
-      kidKeywords: [],   // 子どもが繰り返し使ったキーワード
-      sharedEmotions: [], // 一緒に盛り上がった瞬間のメモ
-      takaraLevel: 1,    // たからちゃんのレベル（セッション数で上昇）
-      missionLog:  [],   // 過去のミッション
+      topicLog:    [],
+      lensLog:     [],
+      kidKeywords: [],
+      sharedEmotions: [],
+      takaraLevel: 1,
+      missionLog:  [],
     };
 
     mem.sessions  += 1;
@@ -537,7 +521,6 @@ Object.assign(App, {
     if (S.lens)       mem.lensLog  = [S.lens,       ...(mem.lensLog  || [])].slice(0, 10);
     if (S.summaryMission) mem.missionLog = [S.summaryMission, ...(mem.missionLog || [])].slice(0, 5);
 
-    // キーワード抽出（子どもの発言から頻出語を蓄積）
     const childWords = S.messages
       .filter(m => m.role === 'child')
       .map(m => m.text)
@@ -546,12 +529,9 @@ Object.assign(App, {
       .filter(w => w.length >= 2 && w.length <= 8);
     mem.kidKeywords = [...new Set([...childWords, ...(mem.kidKeywords || [])])].slice(0, 20);
 
-    // レベルアップ（10セッションごと）
     mem.takaraLevel = Math.floor(mem.sessions / 3) + 1;
-
     S.takaraMemory = mem;
 
-    // localStorageに保存（端末をまたいで記憶を継続）
     try {
       localStorage.setItem('takaraMemory_' + (S.user?.name || 'default'), JSON.stringify(mem));
     } catch(e) {
