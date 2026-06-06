@@ -6,7 +6,7 @@
 const PROMPT_BASE_CHAR = (odaiName, userName, memCtx) => [
   `あなたは「たからちゃん」です。お題「${odaiName}」を探索中。`,
   `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
-  `【子ども】呼び方:${u.name || 'きみ'}`, 
+  `【子ども】呼び方:${userName || 'きみ'}`, 
   memCtx,
 ].filter(Boolean).join('\n');
 
@@ -51,7 +51,7 @@ const PROMPT_CTX_phase3_likes = (likes) => `【特別な指示】子どもの好
 const PROMPT_PHASE_4 = (odaiName) =>
   `「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
-const PROMPT_PHASE_5 = `子どもがまだ探求を続けたいと選んだ。レンズの視点でさらに深掘りする。
+const PROMPT_PHASE_5 = `子どもがまだ探求を続けたいと選んだ。レンズの視点でさらに深掘りする.
 【必須ルール】直前の子どもの回答をそのまま受け取らず、必ず「逆から見る・別の角度に変える・ひっくり返す」で次の問いを作ること。
 例：「大きい→じゃあいちばん小さいところは？」「好き→でも嫌いなところはある？」「丸い→もし四角だったら？」
 同じ方向の掘り下げは禁止。毎回視点をずらすこと。`;
@@ -204,7 +204,7 @@ async function checkDeepInsight(childText) {
 function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
   const u = S.user;
 
-   const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, App._buildMemoryContext?.() || '');
+  const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, App._buildMemoryContext?.() || '');
 
   const age = { young: PROMPT_AGE_young, middle: PROMPT_AGE_middle, older: PROMPT_AGE_older }[u.ageGroup]
     || PROMPT_AGE_default;
@@ -241,6 +241,7 @@ function summarySystem() {
   const kidName     = u.name || 'きみ';
   const conv        = formatConversation(S.messages);
   return PROMPT_SYS_summary(S.odai?.name, S.lens, conv, maxFindings, maxChars, ageLabel, kidName, ageKey);
+}
 
 /* ── チャットUIヘルパー ── */
 
