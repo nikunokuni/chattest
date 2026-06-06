@@ -41,13 +41,26 @@ const PROMPT_LENS_MAP = {
 };
 
 // ── フェーズ別指示 ──
-const PROMPT_PHASE_1 = `「どこで見つけたの？」場所・状況を1つ聞く。`;
+const PROMPT_PHASE_1 = `「どこで見つけたの？」場所・状況を1つ聞く。
+子どもから場所・状況を示すことば（例：そと・いえ・こうえん・そら・みず・ゆか など）が1つでも出たら、それで十分。
+把握できたら返答の末尾に必ず「[状況OK]」とだけ付けること。まだ出ていなければ付けない。`;
 
-const PROMPT_PHASE_2 = `レンズの視点でお題を観察させる。まだ「なぜ？」は聞かない。`;
+const PROMPT_PHASE_2 = `レンズの視点でお題そのものを観察させる。まだ「なぜ？」は聞かない。
+色・形・大きさ・感触・音など、そのものの特徴を1つ引き出すことが目標。
+子どもがお題の何らかの特徴・気になる部分を1つでも言葉にできたら十分。
+引き出せたら返答の末尾に必ず「[観察OK]」とだけ付けること。まだ出ていなければ付けない。`;
 
-const PROMPT_PHASE_3 = `レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。`;
-const PROMPT_CTX_phase3_decision = `【必須ルール】今回が深掘りの最後のターンです。返答の末尾に、必ず「たからをしまう？それとももっとたんけんする？」という問いかけを書いてください。これ以外のタイミングでは絶対にこの問いかけを書かないでください。`;
-const PROMPT_CTX_phase3_likes = (likes) => `【特別な指示】子どもの好きなこと「${likes}」をお題と比較したり、例え話に交えたりして問いかけてください。`;
+const PROMPT_PHASE_3 = (situationCtx, observationCtx) => [
+  `レンズの「深掘り」の方向で問いを作ること。子どもが自分なりの答えを言えたら成功。`,
+  situationCtx   ? `【状況】子どもは「${situationCtx}」という場所・状況でお題を見つけた。` : '',
+  observationCtx ? `【観察】子どもが注目した特徴：「${observationCtx}」。` : '',
+  (situationCtx || observationCtx) ? `この状況・観察を踏まえて深掘りの問いを作ること。` : '',
+].filter(Boolean).join('\n');
+const PROMPT_CTX_phase3_decision = `【必須ルール】今回は子どもの返答へのリアクション・あいづちを一言だけ返した後、「たからをしまう？それとももっとたんけんする？」という問いかけのみで終わること。深掘りの質問は加えないこと。`;
+const PROMPT_CTX_phase3_likes = (likes) => `【追加指示】深掘りの問いかけの中に、子どもの好きなこと「${likes}」を例え・比較として自然に一言絡めてください。`;
+const PROMPT_CTX_ai_opinion = `【追加指示】深掘りの問いの前に、たからちゃん自身の感想・意見を一言だけ「わたしはね、〜だとおもうんだけど」という形で添えてください。教えるのではなく、一つの見方として自然に話してください。`;
+const PROMPT_CTX_ai_emotion = `【追加指示】深掘りの問いの前に、たからちゃん自身が「これ、すごくふしぎだよね！」「わたしもきになってた！」など、お題への好奇心・驚きを一言だけ自然に表現してください。`;
+const PROMPT_CTX_parent_only = (parentName) => `【必須ルール】今回は子どもへの問いかけを一切しないこと。一緒にいる「${parentName}」だけに向けて「${parentName}はどう思いますか？」と話しかけてください。子どもへのリアクションは一言だけOK。`;
 const PROMPT_PHASE_4 = (odaiName) =>
   `「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
@@ -201,7 +214,7 @@ async function checkDeepInsight(childText) {
    構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [コンテキスト]
    ────────────────────────────────── */
 
-function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
+function chatSystem({ isInterested = true, showParentOnly = false, showPhase3Decision = false, showPhase3Likes = false, showAiOpinion = false, showAiEmotion = false } = {}) {
   const u = S.user;
 
   const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, App._buildMemoryContext?.() || '');
@@ -214,17 +227,19 @@ function chatSystem({ isInterested = true, showParentBridge = false, showPhase3D
   const phase = {
     1: PROMPT_PHASE_1,
     2: PROMPT_PHASE_2,
-    3: PROMPT_PHASE_3,
+    3: PROMPT_PHASE_3(S.situationContext || '', S.observationContext || ''),
     4: PROMPT_PHASE_4(S.odai?.name),
     5: PROMPT_PHASE_5,
   }[S.chatPhase] || PROMPT_PHASE_1;
 
   const ctx = [
     S.currentSummary                  ? `【ここまでの気づき】${S.currentSummary}` : '',
-    !isInterested                      ? PROMPT_CTX_not_interested               : '',
-    showParentBridge                   ? PROMPT_CTX_parent_bridge(u.parentName)  : '',
-    showPhase3Decision                 ? PROMPT_CTX_phase3_decision               : '',
-    (showPhase3Likes && u.likes)       ? PROMPT_CTX_phase3_likes(u.likes)        : '',
+    !isInterested                      ? PROMPT_CTX_not_interested                : '',
+    showParentOnly                     ? PROMPT_CTX_parent_only(u.parentName)     : '',
+    showPhase3Decision                 ? PROMPT_CTX_phase3_decision                : '',
+    (showPhase3Likes && u.likes)       ? PROMPT_CTX_phase3_likes(u.likes)         : '',
+    showAiOpinion                      ? PROMPT_CTX_ai_opinion                    : '',
+    showAiEmotion                      ? PROMPT_CTX_ai_emotion                    : '',
   ].filter(Boolean).join('\n');
 
   return [base, age, lens, phase, ctx].filter(Boolean).join('\n\n');
@@ -280,9 +295,12 @@ Object.assign(App, {
       lastLens:             S.lens,
       speaker:              'child',
       currentSummary:       '',
+      situationContext:     '',
+      observationContext:   '',
       parentBridgeDone:     false,
       phase3Turns:          0,
       phase3DecisionAsked:  false,
+      phase3OpinionDone:    false,
       showDecisionButtons:  false,
     });
     render();
@@ -367,53 +385,57 @@ Object.assign(App, {
       // フェーズ3のターン管理
       let showPhase3Decision = false;
       let showPhase3Likes    = false;
+      let showAiOpinion      = false;
+      let showAiEmotion      = false;
+      let showParentOnly     = false;
       if (S.chatPhase === 3) {
         S.phase3Turns = (S.phase3Turns || 0) + 1;
-        if (S.phase3Turns === 1) showPhase3Likes = true;
+
         if (S.phase3Turns === 3 && !S.phase3DecisionAsked) {
+          // ターン3: リアクション＋決断質問のみ
           showPhase3Decision    = true;
           S.phase3DecisionAsked = true;
           S.showDecisionButtons = true;
+        } else {
+          // それ以外: 基本（深掘り）+ ランダムで1つだけ追加
+          const canParent = S.phase3Turns >= 2 && !S.parentBridgeDone && S.user.parentName;
+          const canOpinion = !S.phase3OpinionDone;
+          const rand = Math.random();
+          let cum = 0;
+
+          if      (canParent  && rand < (cum += 1/10))  { showParentOnly = true; S.parentBridgeDone = true; }
+          else if (canOpinion && rand < (cum += 1/10))  { showAiOpinion  = true; S.phase3OpinionDone = true; }
+          else if (S.user.likes && rand < (cum += 1/6)) { showPhase3Likes = true; }
+          else if (rand < (cum += 1/3))                 { showAiEmotion  = true; }
+          // else: 基本の深掘りのみ
         }
-      }
-
-      // 親への橋渡し判定（フェーズ3中のみ）
-      let showParentBridge = false;
-      if (S.chatPhase === 3 && !S.parentBridgeDone) {
-        if (await checkDeepInsight(txt)) {
-          showParentBridge   = true;
-          S.parentBridgeDone = true;
-        }
-      }
-
-      // フェーズ自動進行
-      const detected  = detectPhaseFromAI('', userMsgCount);
-      const nextPhase = (detected && detected > S.chatPhase && S.chatPhase < 3) ? detected
-        : (!detected && userMsgCount >= 1 && S.chatPhase < 2) ? 2
-        : (!detected && userMsgCount >= 3 && S.chatPhase < 3) ? 3
-        : null;
-
-      if (nextPhase && nextPhase > S.chatPhase) {
-        S.currentSummary = await App._buildPhaseSummary();
-        S.chatPhase      = nextPhase;
-        if (S.chatPhase === 3) S.phase3Turns = 0;
       }
 
       // AI返答を取得
-      const text = await callAI(
-        App._buildMinimalMsg(txt),
-        chatSystem({ isInterested, showParentBridge, showPhase3Decision, showPhase3Likes })
+      let text = await callAI(
+        App._buildApiMsgs(),
+        chatSystem({ isInterested, showParentOnly, showPhase3Decision, showPhase3Likes, showAiOpinion, showAiEmotion })
       );
+
+      // Phase 1 → 2: [状況OK] シグナルを検出
+      if (S.chatPhase === 1 && text.includes('[状況OK]')) {
+        text = text.replace('[状況OK]', '').trimEnd();
+        const lastChild = [...S.messages].reverse().find(m => m.role === 'child' || m.role === 'parent');
+        S.situationContext = lastChild?.text || '';
+        S.chatPhase = 2;
+      }
+
+      // Phase 2 → 3: [観察OK] シグナルを検出
+      if (S.chatPhase === 2 && text.includes('[観察OK]')) {
+        text = text.replace('[観察OK]', '').trimEnd();
+        const lastChild = [...S.messages].reverse().find(m => m.role === 'child' || m.role === 'parent');
+        S.observationContext = lastChild?.text || '';
+        S.chatPhase = 3;
+        S.phase3Turns = 0;
+      }
+
       S.messages.push({ role: 'ai', text });
       S.lastError = false;
-
-      // AIの返答からもフェーズを検出（フェーズ5は除く）
-      if (S.chatPhase !== 5) {
-        const detectedFromReply = detectPhaseFromAI(text, userMsgCount);
-        if (detectedFromReply && detectedFromReply > S.chatPhase) {
-          S.chatPhase = detectedFromReply;
-        }
-      }
 
     } catch (err) {
       console.error('chat error:', err);
@@ -437,7 +459,7 @@ Object.assign(App, {
     scrollChat();
 
     try {
-      const text = await callAI(App._buildMinimalMsg(lastUserMsg.text), chatSystem());
+      const text = await callAI(App._buildApiMsgs(), chatSystem());
       S.messages.push({ role: 'ai', text });
       S.lastError = false;
     } catch {

@@ -3,6 +3,7 @@ export default async function handler(req, res) {
   const allowedOrigins = [
     'https://chattest-mu.vercel.app',  // Vercel 本番
     /^https:\/\/chattest-mu-.*\.vercel\.app$/,  // Vercel プレビュー
+    /^https?:\/\/localhost(:\d+)?$/,  // ローカル開発
   ];
   const origin = req.headers.origin || '';
   const allowed = allowedOrigins.some(o =>
@@ -35,7 +36,7 @@ export default async function handler(req, res) {
 
   try {
     const apiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

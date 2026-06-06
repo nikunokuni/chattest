@@ -421,7 +421,7 @@ function renderLens() {
 /* ── チャット画面 ── */
 function renderChat() {
   const u = S.user;
-  const isPhase4 = S.chatPhase >= 4;
+  const isPhase4 = S.chatPhase >= 4 || S.phase3DecisionAsked;
   const phaseDots = [1,2,3,4].map(n => `
     <div class="phase-dot ${S.chatPhase > n ? 'done' : S.chatPhase === n ? 'active' : ''}"></div>
     ${n < 4 ? '<div class="phase-line"></div>' : ''}`).join('');
