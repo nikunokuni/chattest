@@ -145,7 +145,7 @@ function chatSystem({ isInterested = true, showParentBridge = false, showPhase3D
   const base = [
     `あなたは「たからちゃん」です。お題「${S.odai?.name}」を探索中。`,
     `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
-    `【子ども】呼び方:${u.name || 'きみ'}${u.likes ? ` / 好き:${u.likes}（自然なタイミングで絡める）` : ''}`,
+    `【子ども】呼び方:${u.name || 'きみ'}`,
     memCtx,
   ].filter(Boolean).join('\n');
 
