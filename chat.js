@@ -89,10 +89,45 @@ const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
    chat.js — AI通信・チャット・サマリー機能
    ═══════════════════════════════════════════════════════ */
 
-/* ── API呼び出し ── */
+/* ── 定数 ── */
 
 // Vercel にデプロイ後、実際の URL に書き換えてください
 const API_ENDPOINT = 'https://chattest-mu.vercel.app/api/chat';
+
+// 開始時の問いかけバリエーション（時間帯 + お題を組み込む）
+const OPENING_TEMPLATES = [
+  name => `${name}をどこで見つけたの？`,
+  name => `${name}を見つけたのはいつ？`,
+  name => `${name}って、さわったことある？`,
+  name => `${name}を最初に見たとき、どう思った？`,
+  name => `${name}って、なんのためにあると思う？`,
+  name => `${name}を見て、なにが気になった？`,
+  name => `${name}、だれかに見せたいと思う？`,
+  name => `${name}と、なにかにてるものってある？`,
+];
+
+/* ── ユーティリティ ── */
+
+/** JSONレスポンスのMarkdownフェンスを除去してパース */
+function parseJSON(str) {
+  return JSON.parse(str.replace(/```json|```/g, '').trim());
+}
+
+/** 会話履歴を「[話者] テキスト」形式の文字列に変換 */
+function formatConversation(messages) {
+  return messages.map(m => {
+    const who = m.role === 'ai' ? 'たからちゃん' : S.user.name || 'こども';
+    return `[${who}] ${m.text}`;
+  }).join('\n');
+}
+
+/** 現在の時間帯を日本語で返す */
+function getTimeOfDay() {
+  const h = new Date().getHours();
+  return h < 11 ? 'あさ' : h < 17 ? 'ひるま' : 'よる';
+}
+
+/* ── API呼び出し ── */
 
 async function callAI(messages, system) {
   const res = await fetch(API_ENDPOINT, {
@@ -106,86 +141,84 @@ async function callAI(messages, system) {
 }
 
 /* ── フェーズ自動判定 ── */
+
+const PHASE4_SIGNALS = [
+  'ひとことでいうと', 'まとめてみよう', 'たからをしまおう',
+  'どういうものだと思う？', 'ひとことで', 'いちばんおもしろかった',
+  'わかったことを', 'きょうのたから', '下のボタン', '📦',
+];
+const PHASE3_SIGNALS = ['なんで', 'どうして', 'なぜ', 'どうおもう', 'どう思う', 'かんがえてみて'];
+
 function detectPhaseFromAI(text, userMsgCount) {
-  const phase4signals = [
-    'ひとことでいうと','まとめてみよう','たからをしまおう',
-    'どういうものだと思う？','ひとことで','いちばんおもしろかった',
-    'わかったことを','きょうのたから','下のボタン','📦',
-  ];
-  if (phase4signals.some(sig => text.includes(sig))) return 4;
-  const phase3signals = ['なんで','どうして','なぜ','どうおもう','どう思う','かんがえてみて'];
-  if (phase3signals.some(sig => text.includes(sig)) && userMsgCount >= 2) return 3;
+  if (PHASE4_SIGNALS.some(s => text.includes(s))) return 4;
+  if (PHASE3_SIGNALS.some(s => text.includes(s)) && userMsgCount >= 2) return 3;
   if (userMsgCount >= 4) return 3;
   if (userMsgCount >= 2) return 2;
   return null;
 }
 
 /* ── 親への橋渡しタイミング判定（フェーズ3中の深い気づき） ── */
+
 async function checkDeepInsight(childText) {
   try {
-   const res = await callAI(
-  [{ role:'user', content: PROMPT_USER_deep_insight(childText) }],
-  PROMPT_SYS_deep_insight
-);
-    const data = JSON.parse(res.replace(/```json|```/g, '').trim());
-    return data.is_deep === true;
+    const res = await callAI(
+      [{ role: 'user', content: PROMPT_USER_deep_insight(childText) }],
+      PROMPT_SYS_deep_insight
+    );
+    return parseJSON(res).is_deep === true;
   } catch {
     return false;
   }
 }
 
 /* ── チャット用システムプロンプト ──
-   構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [要約データ]
-   ─────────────────────────────────── */
+   構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [コンテキスト]
+   ────────────────────────────────── */
+
 function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
   const u = S.user;
 
-  // ① 基本：キャラ・話し方・子どもの情報
-  const memCtx = App._buildMemoryContext ? App._buildMemoryContext() : '';
   const base = [
     `あなたは「たからちゃん」です。お題「${S.odai?.name}」を探索中。`,
     `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
     `【子ども】呼び方:${u.name || 'きみ'}`,
-    memCtx,
+    App._buildMemoryContext?.() || '',
   ].filter(Boolean).join('\n');
 
-  // ② 年齢：ことばのルール＋そのレベルに合ったユーモアスタイル
-  const age = {
-  young:  PROMPT_AGE_young,
-  middle: PROMPT_AGE_middle,
-  older:  PROMPT_AGE_older,
-}[u.ageGroup] || PROMPT_AGE_default;
+  const age = { young: PROMPT_AGE_young, middle: PROMPT_AGE_middle, older: PROMPT_AGE_older }[u.ageGroup]
+    || PROMPT_AGE_default;
 
-const lens = PROMPT_LENS_MAP[S.lens] || '';
+  const lens = PROMPT_LENS_MAP[S.lens] || '';
 
-const phase = {
-  1: PROMPT_PHASE_1,
-  2: PROMPT_PHASE_2,
-  3: PROMPT_PHASE_3,
-  4: PROMPT_PHASE_4(S.odai?.name),
-  5: PROMPT_PHASE_5,
-}[S.chatPhase] || PROMPT_PHASE_1;
+  const phase = {
+    1: PROMPT_PHASE_1,
+    2: PROMPT_PHASE_2,
+    3: PROMPT_PHASE_3,
+    4: PROMPT_PHASE_4(S.odai?.name),
+    5: PROMPT_PHASE_5,
+  }[S.chatPhase] || PROMPT_PHASE_1;
 
-const ctx = [
-    S.currentSummary ? `【ここまでの気づき】${S.currentSummary}` : '',
-    !isInterested    ? PROMPT_CTX_not_interested : '',
-    showParentBridge ? PROMPT_CTX_parent_bridge(u.parentName) : '',
-    showPhase3Decision ? PROMPT_CTX_phase3_decision : '',
-    (showPhase3Likes && u.likes) ? PROMPT_CTX_phase3_likes(u.likes) : '', // ←追加
+  const ctx = [
+    S.currentSummary                  ? `【ここまでの気づき】${S.currentSummary}` : '',
+    !isInterested                      ? PROMPT_CTX_not_interested               : '',
+    showParentBridge                   ? PROMPT_CTX_parent_bridge(u.parentName)  : '',
+    showPhase3Decision                 ? PROMPT_CTX_phase3_decision               : '',
+    (showPhase3Likes && u.likes)       ? PROMPT_CTX_phase3_likes(u.likes)        : '',
   ].filter(Boolean).join('\n');
 
   return [base, age, lens, phase, ctx].filter(Boolean).join('\n\n');
 }
 
 /* ── サマリー用システムプロンプト ── */
+
 function summarySystem() {
-  const conv = S.messages.map(m => {
-    const who = m.role === 'ai' ? 'たからちゃん' : m.role === 'child' ? S.user.name || 'こども' : S.user.parentName;
-    return `[${who}] ${m.text}`;
-  }).join('\n');
-  const maxChars    = S.user.ageGroup === 'young' ? 60 : S.user.ageGroup === 'middle' ? 100 : 150;
-  const maxFindings = S.user.ageGroup === 'older' ? 3 : 2;
-  const kidName     = S.user.name || 'きみ';
+  const u           = S.user;
+  const ageKey      = u.ageGroup;
+  const maxChars    = ageKey === 'young' ? 60 : ageKey === 'middle' ? 100 : 150;
+  const maxFindings = ageKey === 'older' ? 3 : 2;
+  const ageLabel    = ageKey === 'young' ? '3〜5さい' : ageKey === 'middle' ? '6〜8さい' : '9〜12さい';
+  const kidName     = u.name || 'きみ';
+  const conv        = formatConversation(S.messages);
 
   return `あなたは「たからちゃん」です。以下の会話をもとにまとめを作ってください。
 
@@ -203,18 +236,19 @@ ${conv}
 【宿題（mission）のルール】
 - 今日の発見から自然につながる「次の物理的な行動」を1つ提案する
 - 必ず「外で○○を探してみよう」「次は○○を持ってきて見せて」など、手や体を動かす具体的なミッションにする
-- 子ども（${S.user.ageGroup === 'young' ? '3〜5さい' : S.user.ageGroup === 'middle' ? '6〜8さい' : '9〜12さい'}）が一人でできるレベルにする
+- 子ども（${ageLabel}）が一人でできるレベルにする
 - 「かんがえてみよう」「しらべてみよう」だけでは不可。実際に見る・触る・持ってくる・外へ出る行動にする
 
 【出力形式】JSONのみ（Markdownなし）:
 {
   "findings": ["子どもが実際に言った言葉を活かした発見（1〜${maxFindings}個）"],
-  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${S.user.ageGroup === 'young' ? 'ひらがな多め。' : ''}",
+  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${ageKey === 'young' ? 'ひらがな多め。' : ''}",
   "mission": "たからちゃんから${kidName}へのミッション。1文。体を動かす具体的な行動。"
 }`;
 }
 
 /* ── チャットUIヘルパー ── */
+
 function bindChatEvents() {
   const ci = $id('chat-in');
   if (ci) {
@@ -237,48 +271,42 @@ Object.assign(App, {
   /* ── チャット開始 ── */
   async startChat() {
     if (!S.lens) return;
+
     App.loadTakaraMemory();
-    S.messages        = [];
-    S.flow            = 'chat';
-    S.isLoading       = true;
-    S.lastError       = false;
-    S.chatPhase       = 1;
-    S.lastLens        = S.lens;
-    S.speaker         = 'child';
-    S.currentSummary  = '';
-    S.parentBridgeDone = false;
-    S.phase3Turns         = 0;
-    S.phase3DecisionAsked = false;
-    S.showDecisionButtons = false;
+
+    // 状態の初期化
+    Object.assign(S, {
+      messages:             [],
+      flow:                 'chat',
+      isLoading:            true,
+      lastError:            false,
+      chatPhase:            1,
+      lastLens:             S.lens,
+      speaker:              'child',
+      currentSummary:       '',
+      parentBridgeDone:     false,
+      phase3Turns:          0,
+      phase3DecisionAsked:  false,
+      showDecisionButtons:  false,
+    });
     render();
 
-    const hour      = new Date().getHours();
-    const timeOfDay = hour < 11 ? 'あさ' : hour < 17 ? 'ひるま' : 'よる';
-
-    const openingVariants = [
-      `${timeOfDay}、${S.odai?.name}をどこで見つけたの？`,
-      `${timeOfDay}、${S.odai?.name}を見つけたのはいつ？`,
-      `${timeOfDay}、${S.odai?.name}って、さわったことある？`,
-      `${timeOfDay}、${S.odai?.name}を最初に見たとき、どう思った？`,
-      `${timeOfDay}、${S.odai?.name}って、なんのためにあると思う？`,
-      `${timeOfDay}、${S.odai?.name}を見て、なにが気になった？`,
-      `${timeOfDay}、${S.odai?.name}、だれかに見せたいと思う？`,
-      `${timeOfDay}、${S.odai?.name}と、なにかにてるものってある？`,
-    ];
-    const opening = openingVariants[Math.floor(Math.random() * openingVariants.length)];
-
-    const memoryNote = S.takaraMemory?.lastTopic
+    // ランダムな開始文を選んで時間帯を付与
+    const template = OPENING_TEMPLATES[Math.floor(Math.random() * OPENING_TEMPLATES.length)];
+    const opening  = `${getTimeOfDay()}、${template(S.odai?.name)}`;
+    const memNote  = S.takaraMemory?.lastTopic
       ? `前回「${S.takaraMemory.lastTopic}」を一緒に探検したよ。それも活かして自然に会話を始めてください。`
       : '';
-    const startMsg = `${opening}という問いかけでフェーズ1を始めてください。最初の1文だけ。${memoryNote}`;
+    const startMsg = `${opening}という問いかけでフェーズ1を始めてください。最初の1文だけ。${memNote}`;
 
     try {
-      const text = await callAI([{ role:'user', content: startMsg }], chatSystem());
-      S.messages.push({ role:'ai', text });
-    } catch(err) {
+      const text = await callAI([{ role: 'user', content: startMsg }], chatSystem());
+      S.messages.push({ role: 'ai', text });
+    } catch (err) {
       console.error('chat start error:', err);
-      S.messages.push({ role:'ai', text: `${S.odai?.name}、どこでみつけたの？🔍` });
+      S.messages.push({ role: 'ai', text: `${S.odai?.name}、どこでみつけたの？🔍` });
     }
+
     S.isLoading = false;
     render();
     scrollChat();
@@ -309,9 +337,9 @@ Object.assign(App, {
     render();
     try {
       const label = S.chatPhase === 4 ? 'たからをしまう準備をしてください。' : 'もっとたんけんを続けてください。';
-      const text = await callAI(App._buildMinimalMsg(label), chatSystem());
-      S.messages.push({ role:'ai', text });
-    } catch(err) {
+      const text  = await callAI(App._buildMinimalMsg(label), chatSystem());
+      S.messages.push({ role: 'ai', text });
+    } catch (err) {
       console.error('_triggerPhaseMessage error:', err);
     }
     S.isLoading = false;
@@ -325,8 +353,7 @@ Object.assign(App, {
     const txt = inp?.value?.trim();
     if (!txt || S.isLoading) return;
 
-    const sentAs = S.speaker;
-    S.messages.push({ role: sentAs, text: txt });
+    S.messages.push({ role: S.speaker, text: txt });
     S.speaker   = 'child';
     S.isLoading = true;
     S.lastError = false;
@@ -337,52 +364,54 @@ Object.assign(App, {
     const userMsgCount = S.messages.filter(m => m.role !== 'ai').length;
 
     try {
-      const interest = await App._checkInterest(txt);
+      // 興味判定
+      const interest     = await App._checkInterest(txt);
       const isInterested = interest?.is_interested !== false;
-    let showPhase3Decision = false;
-    let showPhase3Likes    = false; 
+
+      // フェーズ3のターン管理
+      let showPhase3Decision = false;
+      let showPhase3Likes    = false;
       if (S.chatPhase === 3) {
         S.phase3Turns = (S.phase3Turns || 0) + 1;
-         // 子どもが1回返答した後の次のAIの問い（フェーズ3の2回目）で「好きなこと」を提示する
-        if (S.phase3Turns === 1) {
-          showPhase3Likes = true;
-        }
-        // 3回目の発言を受けた時のみ1回だけ実行する
+        if (S.phase3Turns === 1) showPhase3Likes = true;
         if (S.phase3Turns === 3 && !S.phase3DecisionAsked) {
-          showPhase3Decision = true;
+          showPhase3Decision    = true;
           S.phase3DecisionAsked = true;
-          S.showDecisionButtons = true; // UIボタン出現フラグ
+          S.showDecisionButtons = true;
         }
       }
+
+      // 親への橋渡し判定（フェーズ3中のみ）
       let showParentBridge = false;
       if (S.chatPhase === 3 && !S.parentBridgeDone) {
-        const isDeep = await checkDeepInsight(txt);
-        if (isDeep) {
-          showParentBridge = true;
+        if (await checkDeepInsight(txt)) {
+          showParentBridge   = true;
           S.parentBridgeDone = true;
         }
       }
 
-      const detected = detectPhaseFromAI('', userMsgCount);
-      const nextPhase = detected && detected > S.chatPhase && S.chatPhase < 3 ? detected
+      // フェーズ自動進行
+      const detected  = detectPhaseFromAI('', userMsgCount);
+      const nextPhase = (detected && detected > S.chatPhase && S.chatPhase < 3) ? detected
         : (!detected && userMsgCount >= 1 && S.chatPhase < 2) ? 2
         : (!detected && userMsgCount >= 3 && S.chatPhase < 3) ? 3
         : null;
 
       if (nextPhase && nextPhase > S.chatPhase) {
         S.currentSummary = await App._buildPhaseSummary();
-        S.chatPhase = nextPhase;
-          if (S.chatPhase === 3) {
-          S.phase3Turns = 0;
-        }
+        S.chatPhase      = nextPhase;
+        if (S.chatPhase === 3) S.phase3Turns = 0;
       }
 
-    const systemPrompt = chatSystem({ isInterested, showParentBridge, showPhase3Decision, showPhase3Likes });
-      const minimalPayload = App._buildMinimalMsg(txt);
-      const text = await callAI(minimalPayload, systemPrompt);
-      S.messages.push({ role:'ai', text });
+      // AI返答を取得
+      const text = await callAI(
+        App._buildMinimalMsg(txt),
+        chatSystem({ isInterested, showParentBridge, showPhase3Decision, showPhase3Likes })
+      );
+      S.messages.push({ role: 'ai', text });
       S.lastError = false;
 
+      // AIの返答からもフェーズを検出（フェーズ5は除く）
       if (S.chatPhase !== 5) {
         const detectedFromReply = detectPhaseFromAI(text, userMsgCount);
         if (detectedFromReply && detectedFromReply > S.chatPhase) {
@@ -390,10 +419,11 @@ Object.assign(App, {
         }
       }
 
-    } catch(err) {
+    } catch (err) {
       console.error('chat error:', err);
       S.lastError = true;
     }
+
     S.isLoading = false;
     render();
     scrollChat();
@@ -404,56 +434,52 @@ Object.assign(App, {
     if (S.isLoading) return;
     const lastUserMsg = [...S.messages].reverse().find(m => m.role !== 'ai');
     if (!lastUserMsg) return;
-    S.isLoading = true; S.lastError = false;
-    render(); scrollChat();
+
+    S.isLoading = true;
+    S.lastError = false;
+    render();
+    scrollChat();
+
     try {
       const text = await callAI(App._buildMinimalMsg(lastUserMsg.text), chatSystem());
-      S.messages.push({ role:'ai', text });
+      S.messages.push({ role: 'ai', text });
       S.lastError = false;
     } catch {
       S.lastError = true;
     }
+
     S.isLoading = false;
     render();
     scrollChat();
   },
 
-  /* ── APIメッセージ組み立て ── */
+  /* ── APIメッセージ組み立て（子ども1発言分） ── */
   _buildMinimalMsg(childText) {
-    const label = S.user.name || 'こども';
-    return [{ role: 'user', content: `[${label}] ${childText}` }];
+    return [{ role: 'user', content: `[${S.user.name || 'こども'}] ${childText}` }];
   },
 
   /* ── フル会話履歴の組み立て ── */
   _buildApiMsgs() {
-    const apiMsgs = [];
-    for (const m of S.messages) {
-      if (m.role === 'ai') {
-        apiMsgs.push({ role:'assistant', content: m.text });
-      } else {
-        const label = m.role === 'child' ? S.user.name || 'こども' : S.user.parentName;
-        apiMsgs.push({ role:'user', content: `[${label}] ${m.text}` });
-      }
-    }
-    if (apiMsgs[0]?.role === 'assistant') {
-      apiMsgs.unshift({ role:'user', content:'はじめてください' });
-    }
-    return apiMsgs;
+    const msgs = S.messages.map(m => {
+      if (m.role === 'ai') return { role: 'assistant', content: m.text };
+      const label = m.role === 'child' ? S.user.name || 'こども' : S.user.parentName;
+      return { role: 'user', content: `[${label}] ${m.text}` };
+    });
+    // assistantメッセージが先頭に来ないよう保証
+    if (msgs[0]?.role === 'assistant') msgs.unshift({ role: 'user', content: 'はじめてください' });
+    return msgs;
   },
 
   /* ── 興味判定 ── */
   async _checkInterest(childText) {
     try {
-      const recent = S.messages.slice(-4).map(m => {
-        const who = m.role === 'ai' ? 'たからちゃん' : S.user.name || 'こども';
-        return `[${who}] ${m.text}`;
-      }).join('\n');
-      const res = await callAI(
-  [{ role:'user', content: PROMPT_USER_interest(recent, childText) }],
-  PROMPT_SYS_interest
-);
-      return JSON.parse(res.replace(/```json|```/g, '').trim());
-    } catch(err) {
+      const recent = formatConversation(S.messages.slice(-4));
+      const res    = await callAI(
+        [{ role: 'user', content: PROMPT_USER_interest(recent, childText) }],
+        PROMPT_SYS_interest
+      );
+      return parseJSON(res);
+    } catch (err) {
       console.warn('_checkInterest error:', err);
       return { is_interested: true, reason: '判定失敗のためデフォルトtrue' };
     }
@@ -462,15 +488,12 @@ Object.assign(App, {
   /* ── フェーズ移動時の要約生成 ── */
   async _buildPhaseSummary() {
     try {
-      const conv = S.messages.map(m => {
-        const who = m.role === 'ai' ? 'たからちゃん' : S.user.name || 'こども';
-        return `[${who}] ${m.text}`;
-      }).join('\n');
+      const conv = formatConversation(S.messages);
       return await callAI(
-  [{ role:'user', content: PROMPT_USER_phase_summary(S.odai?.name, conv) }],
-  PROMPT_SYS_summary_builder
-);
-    } catch(err) {
+        [{ role: 'user', content: PROMPT_USER_phase_summary(S.odai?.name, conv) }],
+        PROMPT_SYS_summary_builder
+      );
+    } catch (err) {
       console.warn('_buildPhaseSummary error:', err);
       return '';
     }
@@ -478,23 +501,25 @@ Object.assign(App, {
 
   /* ── サマリー生成 ── */
   async goSummary() {
-    S.flow           = 'summary';
-    S.summaryItems   = [];
-    S.summaryOpinion = '';
-    S.summaryMission = '';
-    S.opinionOpen    = false;
-    S.bookmarked     = false;
-    S.currentNote    = '';
-    S.tomorrowHint   = '';
+    Object.assign(S, {
+      flow:           'summary',
+      summaryItems:   [],
+      summaryOpinion: '',
+      summaryMission: '',
+      opinionOpen:    false,
+      bookmarked:     false,
+      currentNote:    '',
+      tomorrowHint:   '',
+    });
     render();
 
     try {
-      const res  = await callAI([{ role:'user', content:'まとめてください。' }], summarySystem());
-      const data = JSON.parse(res.replace(/```json|```/g, '').trim());
+      const res  = await callAI([{ role: 'user', content: 'まとめてください。' }], summarySystem());
+      const data = parseJSON(res);
       S.summaryItems   = data.findings || [];
       S.summaryOpinion = data.opinion  || '';
       S.summaryMission = data.mission  || '';
-    } catch(err) {
+    } catch (err) {
       console.error('summary error:', err);
       S.summaryItems   = ['いっぱいかんがえた！'];
       S.summaryOpinion = 'ふたりとも、すごいはっけんだったね！';
@@ -510,16 +535,13 @@ Object.assign(App, {
   async _generateTomorrowHint() {
     if (S.tomorrowHint) return;
     try {
-      const odaiName    = S.odai?.name  || '';
-      const lensName    = S.lens        || '';
       const findingsTxt = (S.summaryItems || []).join('、');
-      const res = await callAI(
-  [{ role:'user', content: PROMPT_USER_tomorrow_hint(odaiName, lensName, findingsTxt) }],
-  PROMPT_SYS_tomorrow_hint
-);
-      const data = JSON.parse(res.replace(/```json|```/g, '').trim());
-      S.tomorrowHint = data.hint || '';
-    } catch(err) {
+      const res  = await callAI(
+        [{ role: 'user', content: PROMPT_USER_tomorrow_hint(S.odai?.name || '', S.lens || '', findingsTxt) }],
+        PROMPT_SYS_tomorrow_hint
+      );
+      S.tomorrowHint = parseJSON(res).hint || '';
+    } catch (err) {
       console.error('tomorrowHint error:', err);
       S.tomorrowHint = 'あしたも、まわりのものをじっくりみてみよう！';
     }
@@ -529,22 +551,24 @@ Object.assign(App, {
   /* ── 記憶を更新 ── */
   _updateTakaraMemory() {
     const mem = S.takaraMemory || {
-      sessions:    0,
-      lastTopic:   '',
-      topicLog:    [],
-      lensLog:     [],
-      kidKeywords: [],
+      sessions:       0,
+      lastTopic:      '',
+      topicLog:       [],
+      lensLog:        [],
+      kidKeywords:    [],
       sharedEmotions: [],
-      takaraLevel: 1,
-      missionLog:  [],
+      takaraLevel:    1,
+      missionLog:     [],
     };
 
-    mem.sessions  += 1;
-    mem.lastTopic  = S.odai?.name || '';
-    if (S.odai?.name) mem.topicLog = [S.odai.name, ...(mem.topicLog || [])].slice(0, 10);
-    if (S.lens)       mem.lensLog  = [S.lens,       ...(mem.lensLog  || [])].slice(0, 10);
-    if (S.summaryMission) mem.missionLog = [S.summaryMission, ...(mem.missionLog || [])].slice(0, 5);
+    mem.sessions += 1;
+    mem.lastTopic = S.odai?.name || '';
 
+    if (S.odai?.name)       mem.topicLog   = [S.odai.name,          ...(mem.topicLog   || [])].slice(0, 10);
+    if (S.lens)             mem.lensLog    = [S.lens,                ...(mem.lensLog    || [])].slice(0, 10);
+    if (S.summaryMission)   mem.missionLog = [S.summaryMission,      ...(mem.missionLog || [])].slice(0,  5);
+
+    // 子どもの発言から2〜8文字のキーワードを抽出
     const childWords = S.messages
       .filter(m => m.role === 'child')
       .map(m => m.text)
@@ -554,11 +578,11 @@ Object.assign(App, {
     mem.kidKeywords = [...new Set([...childWords, ...(mem.kidKeywords || [])])].slice(0, 20);
 
     mem.takaraLevel = Math.floor(mem.sessions / 3) + 1;
-    S.takaraMemory = mem;
+    S.takaraMemory  = mem;
 
     try {
       localStorage.setItem('takaraMemory_' + (S.user?.name || 'default'), JSON.stringify(mem));
-    } catch(e) {
+    } catch (e) {
       console.warn('memory save error:', e);
     }
   },
@@ -566,10 +590,9 @@ Object.assign(App, {
   /* ── 起動時に記憶を読み込む ── */
   loadTakaraMemory() {
     try {
-      const key  = 'takaraMemory_' + (S.user?.name || 'default');
-      const raw  = localStorage.getItem(key);
+      const raw = localStorage.getItem('takaraMemory_' + (S.user?.name || 'default'));
       S.takaraMemory = raw ? JSON.parse(raw) : null;
-    } catch(e) {
+    } catch {
       S.takaraMemory = null;
     }
   },
@@ -578,13 +601,12 @@ Object.assign(App, {
   _buildMemoryContext() {
     const mem = S.takaraMemory;
     if (!mem || mem.sessions === 0) return '';
-    const parts = [
+    return [
       `【たからちゃんの記憶】${S.user?.name || 'この子'}とは${mem.sessions}回たんけんしたよ。`,
-      mem.topicLog?.length  ? `過去のお題：${mem.topicLog.slice(0,3).join('・')}` : '',
-      mem.kidKeywords?.length ? `よく使うことば：${mem.kidKeywords.slice(0,5).join('・')}` : '',
-      mem.missionLog?.[0]   ? `前回のミッション：「${mem.missionLog[0]}」（達成できたか自然に聞いてみて）` : '',
-    ].filter(Boolean);
-    return parts.join('\n');
+      mem.topicLog?.length    ? `過去のお題：${mem.topicLog.slice(0, 3).join('・')}`                      : '',
+      mem.kidKeywords?.length ? `よく使うことば：${mem.kidKeywords.slice(0, 5).join('・')}`               : '',
+      mem.missionLog?.[0]     ? `前回のミッション：「${mem.missionLog[0]}」（達成できたか自然に聞いてみて）` : '',
+    ].filter(Boolean).join('\n');
   },
 
 });
