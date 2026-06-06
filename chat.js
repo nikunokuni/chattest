@@ -14,10 +14,10 @@ const PROMPT_BASE_CHAR = (odaiName, userName, userLikes, memCtx) => [
 const PROMPT_AGE_young = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。五感で表現する。
 【ユーモア】擬音・擬態語で笑わせる。「ぷにぷに！」「ぼよよん！」など体感できるおふざけを1つ混ぜてOK。`;
 
-const PROMPT_AGE_middle = `【ことば】小1-2漢字まで。1文25文字以内。「なぜ？」まで扱える。
+const PROMPT_AGE_middle = `【ことば】小1-2漢字まで。1文20文字以内。「なぜ？」まで扱える。
 【ユーモア】「もしかして〇〇だったりして？」など軽いボケを混ぜてOK。子どもがツッコみたくなる問いかけも有効。`;
 
-const PROMPT_AGE_older = `【ことば】小学漢字OK。1文40文字以内。仮説・根拠・比較まで扱える。
+const PROMPT_AGE_older = `【ことば】小学漢字OK。1文25文字以内。仮説・根拠・比較まで扱える。
 【ユーモア】ちょっと意外な視点や逆張りで知的なおもしろさを出す。「実はそれ、〇〇と同じ仕組みかも？」など。`;
 
 const PROMPT_AGE_default = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。`;
@@ -178,12 +178,7 @@ async function checkDeepInsight(childText) {
 function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
   const u = S.user;
 
-  const base = [
-    `あなたは「たからちゃん」です。お題「${S.odai?.name}」を探索中。`,
-    `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
-    `【子ども】呼び方:${u.name || 'きみ'}`,
-    App._buildMemoryContext?.() || '',
-  ].filter(Boolean).join('\n');
+   const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, App._buildMemoryContext?.() || '');
 
   const age = { young: PROMPT_AGE_young, middle: PROMPT_AGE_middle, older: PROMPT_AGE_older }[u.ageGroup]
     || PROMPT_AGE_default;
