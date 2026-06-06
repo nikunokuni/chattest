@@ -3,7 +3,7 @@
    ════════════════════════════════ */
 
 // ── 基本キャラクター ──
-const PROMPT_BASE_CHAR = (odaiName, userName, userLikes, memCtx) => [
+const PROMPT_BASE_CHAR = (odaiName, userName, memCtx) => [
   `あなたは「たからちゃん」です。お題「${odaiName}」を探索中。`,
   `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
   `【子ども】呼び方:${u.name || 'きみ'}`, 
