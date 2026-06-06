@@ -240,8 +240,7 @@ function summarySystem() {
   const ageLabel    = ageKey === 'young' ? '3〜5さい' : ageKey === 'middle' ? '6〜8さい' : '9〜12さい';
   const kidName     = u.name || 'きみ';
   const conv        = formatConversation(S.messages);
-  return PROMPT_SYS_summary(S.odai?.name, S.lens, conv, maxFindings, maxChars, ageLabel, kidName, ageKey === 'young');
-}
+  return PROMPT_SYS_summary(S.odai?.name, S.lens, conv, maxFindings, maxChars, ageLabel, kidName, ageKey);
 
 /* ── チャットUIヘルパー ── */
 
