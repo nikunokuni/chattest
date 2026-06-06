@@ -85,6 +85,32 @@ const PROMPT_USER_phase_summary = (odaiName, conv) =>
 const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
   `子ども向けアプリで、お題「${odaiName}」をレンズ「${lensName}」で探索し、「${findingsTxt}」を発見しました。明日の日常で意識できることを、子ども（3〜9歳）向けに1文でやさしく提案してください。JSONのみ: {"hint":"ひらがな・ことばあそびで1文"}`;
 
+const PROMPT_SYS_summary = (odaiName, lens, conv, maxFindings, maxChars, ageLabel, kidName, isYoung) =>
+`あなたは「たからちゃん」です。以下の会話をもとにまとめを作ってください。
+ 
+お題: ${odaiName}　レンズ: ${lens}
+ 
+【会話記録】
+${conv}
+ 
+【重要ルール】
+- findingsは必ず上記の会話の中で実際に出た言葉・気づき・発見のみを使う
+- 会話にない言葉の補完・推測・創作は禁止
+- findingsは最大${maxFindings}個まで
+- 子どもが自分の言葉で言った「答え」があれば、それを最初のfindingにする
+ 
+【宿題（mission）のルール】
+- 今日の発見から自然につながる「次の物理的な行動」を1つ提案する
+- 必ず「外で○○を探してみよう」「次は○○を持ってきて見せて」など、手や体を動かす具体的なミッションにする
+- 子ども（${ageLabel}）が一人でできるレベルにする
+- 「かんがえてみよう」「しらべてみよう」だけでは不可。実際に見る・触る・持ってくる・外へ出る行動にする
+ 
+【出力形式】JSONのみ（Markdownなし）:
+{
+  "findings": ["子どもが実際に言った言葉を活かした発見（1〜${maxFindings}個）"],
+  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${isYoung ? 'ひらがな多め。' : ''}",
+  "mission": "たからちゃんから${kidName}へのミッション。1文。体を動かす具体的な行動。"
+}`;
 /* ═══════════════════════════════════════════════════════
    chat.js — AI通信・チャット・サマリー機能
    ═══════════════════════════════════════════════════════ */
@@ -214,32 +240,7 @@ function summarySystem() {
   const ageLabel    = ageKey === 'young' ? '3〜5さい' : ageKey === 'middle' ? '6〜8さい' : '9〜12さい';
   const kidName     = u.name || 'きみ';
   const conv        = formatConversation(S.messages);
-
-  return `あなたは「たからちゃん」です。以下の会話をもとにまとめを作ってください。
-
-お題: ${S.odai?.name}　レンズ: ${S.lens}
-
-【会話記録】
-${conv}
-
-【重要ルール】
-- findingsは必ず上記の会話の中で実際に出た言葉・気づき・発見のみを使う
-- 会話にない言葉の補完・推測・創作は禁止
-- findingsは最大${maxFindings}個まで
-- 子どもが自分の言葉で言った「答え」があれば、それを最初のfindingにする
-
-【宿題（mission）のルール】
-- 今日の発見から自然につながる「次の物理的な行動」を1つ提案する
-- 必ず「外で○○を探してみよう」「次は○○を持ってきて見せて」など、手や体を動かす具体的なミッションにする
-- 子ども（${ageLabel}）が一人でできるレベルにする
-- 「かんがえてみよう」「しらべてみよう」だけでは不可。実際に見る・触る・持ってくる・外へ出る行動にする
-
-【出力形式】JSONのみ（Markdownなし）:
-{
-  "findings": ["子どもが実際に言った言葉を活かした発見（1〜${maxFindings}個）"],
-  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${ageKey === 'young' ? 'ひらがな多め。' : ''}",
-  "mission": "たからちゃんから${kidName}へのミッション。1文。体を動かす具体的な行動。"
-}`;
+  return PROMPT_SYS_summary(S.odai?.name, S.lens, conv, maxFindings, maxChars, ageLabel, kidName, ageKey === 'young');
 }
 
 /* ── チャットUIヘルパー ── */
