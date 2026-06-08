@@ -82,8 +82,6 @@ const PROMPT_SYS_interest = `JSONのみ返してください（Markdownなし）
 
 const PROMPT_SYS_summary_builder = `ここまでの会話の要点を箇条書きで簡潔にまとめるアシスタントです。JSONは不要です。`;
 
-const PROMPT_SYS_tomorrow_hint = `JSONのみ返してください（Markdownなし）。子どもが実践できる具体的な行動を1文で。`;
-
 // ── ユーザープロンプト（判定・要約用） ──
 const PROMPT_USER_deep_insight = (childText) =>
   `子どもの発言:「${childText}」
@@ -94,9 +92,6 @@ const PROMPT_USER_interest = (recent, childText) =>
 
 const PROMPT_USER_phase_summary = (odaiName, conv) =>
   `以下はお題「${odaiName}」の探索会話です。ここまでの子どもの気づきと発言を3行以内で簡潔にまとめてください。\n\n${conv}`;
-
-const PROMPT_USER_tomorrow_hint = (odaiName, lensName, findingsTxt) =>
-  `子ども向けアプリで、お題「${odaiName}」をレンズ「${lensName}」で探索し、「${findingsTxt}」を発見しました。明日の日常で意識できることを、子ども（3〜9歳）向けに1文でやさしく提案してください。JSONのみ: {"hint":"ひらがな・ことばあそびで1文"}`;
 
 const PROMPT_SYS_summary = (odaiName, lens, conv, maxFindings, maxChars, ageLabel, kidName, isYoung) =>
 `あなたは「たからちゃん」です。以下の会話をもとにまとめを作ってください。
@@ -117,12 +112,18 @@ ${conv}
 - 必ず「外で○○を探してみよう」「次は○○を持ってきて見せて」など、手や体を動かす具体的なミッションにする
 - 子ども（${ageLabel}）が一人でできるレベルにする
 - 「かんがえてみよう」「しらべてみよう」だけでは不可。実際に見る・触る・持ってくる・外へ出る行動にする
- 
+
+【あしたのヒント（tomorrowHint）のルール】
+- findingsの内容を踏まえて、あした日常で意識できることを1文でやさしく提案する
+- ひらがな・ことばあそびを使い、子ども（${ageLabel}）が読んでワクワクする言い方にする
+- missionとは別の角度にする（行動の指示ではなく、ものの見方・気づきの種を渡す）
+
 【出力形式】JSONのみ（Markdownなし）:
 {
   "findings": ["子どもが実際に言った言葉を活かした発見（1〜${maxFindings}個）"],
-  "opinion": "保護者向けの温かいコメント。${maxChars}文字以内。2〜3段落。段落区切りは\\n。${isYoung ? 'ひらがな多め。' : ''}",
-  "mission": "たからちゃんから${kidName}へのミッション。1文。体を動かす具体的な行動。"
+  "opinion": ["保護者向けの温かいコメント（段落ごとに配列の要素を分ける。2〜3個。各${maxChars}文字以内。${isYoung ? 'ひらがな多め。' : ''}）"],
+  "mission": "たからちゃんから${kidName}へのミッション。1文。体を動かす具体的な行動。",
+  "tomorrowHint": "あしたの日常で意識できることを、ひらがな中心で1文。ことばあそび要素もOK。"
 }`;
 /* ═══════════════════════════════════════════════════════
    chat.js — AI通信・チャット・サマリー機能
@@ -522,10 +523,11 @@ Object.assign(App, {
     Object.assign(S, {
       flow:           'summary',
       summaryItems:   [],
-      summaryOpinion: '',
+      summaryOpinion: [],
       summaryMission: '',
       opinionOpen:    false,
       bookmarked:     false,
+      noteStamp:      null,
       currentNote:    '',
       tomorrowHint:   '',
     });
@@ -534,35 +536,19 @@ Object.assign(App, {
     try {
       const res  = await callAI([{ role: 'user', content: 'まとめてください。' }], summarySystem());
       const data = parseJSON(res);
-      S.summaryItems   = data.findings || [];
-      S.summaryOpinion = data.opinion  || '';
-      S.summaryMission = data.mission  || '';
+      S.summaryItems   = data.findings     || [];
+      S.summaryOpinion = data.opinion      || [];
+      S.summaryMission = data.mission      || '';
+      S.tomorrowHint   = data.tomorrowHint || '';
     } catch (err) {
       console.error('summary error:', err);
       S.summaryItems   = ['いっぱいかんがえた！'];
-      S.summaryOpinion = 'ふたりとも、すごいはっけんだったね！';
+      S.summaryOpinion = ['ふたりとも、すごいはっけんだったね！'];
       S.summaryMission = 'あしたそとで、なにかみつけてきてね！';
+      S.tomorrowHint   = 'あしたも、まわりのものをじっくりみてみよう！';
     }
 
     App._updateTakaraMemory();
-    render();
-    App._generateTomorrowHint();
-  },
-
-  /* ── あしたのヒント生成 ── */
-  async _generateTomorrowHint() {
-    if (S.tomorrowHint) return;
-    try {
-      const findingsTxt = (S.summaryItems || []).join('、');
-      const res  = await callAI(
-        [{ role: 'user', content: PROMPT_USER_tomorrow_hint(S.odai?.name || '', S.lens || '', findingsTxt) }],
-        PROMPT_SYS_tomorrow_hint
-      );
-      S.tomorrowHint = parseJSON(res).hint || '';
-    } catch (err) {
-      console.error('tomorrowHint error:', err);
-      S.tomorrowHint = 'あしたも、まわりのものをじっくりみてみよう！';
-    }
     render();
   },
 
@@ -575,7 +561,6 @@ Object.assign(App, {
       lensLog:        [],
       kidKeywords:    [],
       sharedEmotions: [],
-      takaraLevel:    1,
       missionLog:     [],
     };
 
@@ -595,7 +580,6 @@ Object.assign(App, {
       .filter(w => w.length >= 2 && w.length <= 8);
     mem.kidKeywords = [...new Set([...childWords, ...(mem.kidKeywords || [])])].slice(0, 20);
 
-    mem.takaraLevel = Math.floor(mem.sessions / 3) + 1;
     S.takaraMemory  = mem;
 
     try {

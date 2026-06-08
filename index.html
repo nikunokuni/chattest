@@ -219,10 +219,18 @@
 
     .note-card { background: #fafafa; border: 1.5px solid #eee; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
     .note-label { font-size: 0.85rem; font-weight: bold; margin-bottom: 6px; }
-    .note-textarea {
-      width: 100%; min-height: 80px; padding: 8px; border: 1.5px solid #ddd;
-      border-radius: 8px; font-size: 0.9rem; resize: none; outline: none;
-      margin-bottom: 8px;
+    .note-stamp-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .note-stamp {
+      display: flex; align-items: center; gap: 4px; padding: 6px 10px;
+      border: 1.5px solid #ddd; border-radius: 999px; background: #fff;
+      font-size: 0.78rem; color: #999; cursor: pointer;
+    }
+    .note-stamp-active { border-color: #e8860a; background: #fff3e0; color: #e8860a; font-weight: bold; }
+    .note-stamp-icon { font-size: 1rem; }
+    .note-input-line {
+      width: 100%; padding: 9px 10px; border: 1.5px solid #ddd;
+      border-radius: 8px; font-size: 0.9rem; outline: none;
+      margin-bottom: 8px; box-sizing: border-box;
     }
     .note-save-btn {
       padding: 8px 16px; background: #e8860a; color: white;
@@ -283,6 +291,14 @@ const LENSES = [
   { id:'じぶん',   icon:'💛', name:'じぶん',   kidDesc:'きみはどう おもった？ すき？きらい？なんで？' },
 ];
 
+const NOTE_STAMPS = [
+  { id:'kirakira', icon:'✨', label:'きらきら',       hint:'なにが　いちばん　きらきらしてた？' },
+  { id:'bikkuri',  icon:'😲', label:'びっくり',       hint:'なにに　いちばん　びっくりした？' },
+  { id:'tanoshii', icon:'😄', label:'たのしい',       hint:'なにが　いちばん　たのしかった？' },
+  { id:'fushigi',  icon:'🤔', label:'ふしぎ',         hint:'どんなことが　ふしぎだった？' },
+  { id:'mata',     icon:'🔁', label:'またやりたい',   hint:'つぎは　なにを　やってみたい？' },
+];
+
 const ODAI_SAMPLES = [
   {emoji:'☁️',name:'くも'},   {emoji:'💧',name:'みず'},
   {emoji:'🌈',name:'にじ'},   {emoji:'🐜',name:'あり'},
@@ -306,9 +322,10 @@ const S = {
   lastError: false,
   lastSendPayload: null,
   summaryItems: [],
-  summaryOpinion: '',
+  summaryOpinion: [],
   opinionOpen: false,
   bookmarked: false,
+  noteStamp: null,
   currentNote: '',
   tomorrowHint: '',
   chatPhase: 1,
@@ -479,8 +496,10 @@ function renderBubble(m) {
 /* ── サマリー画面 ── */
 function renderSummary() {
   const items = S.summaryItems;
-  const paras = S.summaryOpinion.split(/\n/).filter(Boolean);
+  const paras = Array.isArray(S.summaryOpinion) ? S.summaryOpinion.filter(Boolean) : [];
   const colors = ['#e8860a','#0a9396','#e76f51','#52b788','#9b89c4','#ffd166'];
+  const selectedStamp = NOTE_STAMPS.find(st => st.id === S.noteStamp);
+  const noteHint = selectedStamp ? selectedStamp.hint : 'きょう　きづいたことを　ひとことで　かいてみよう';
 
   return `
     ${renderChatHeader()}
@@ -527,8 +546,15 @@ function renderSummary() {
 
       <div class="note-card">
         <div class="note-label">📓 きろくノート</div>
-        <div style="font-size:0.78rem;color:#aaa;margin-bottom:6px">きょうきづいたこと、おもったことをかいてみよう</div>
-        <textarea class="note-textarea" id="note-input" placeholder="（じゆうにかいてね）">${esc(S.currentNote)}</textarea>
+        <div style="font-size:0.78rem;color:#aaa;margin-bottom:8px">きょうのきもちに　いちばんちかいスタンプは？</div>
+        <div class="note-stamp-row">
+          ${NOTE_STAMPS.map(st => `
+            <div class="note-stamp ${S.noteStamp === st.id ? 'note-stamp-active' : ''}" onclick="App.selectNoteStamp('${st.id}')">
+              <span class="note-stamp-icon">${st.icon}</span><span class="note-stamp-lbl">${esc(st.label)}</span>
+            </div>`).join('')}
+        </div>
+        <input class="note-input-line" id="note-input" type="text" maxlength="40"
+               placeholder="${esc(noteHint)}" value="${esc(S.currentNote)}">
         <button class="note-save-btn" onclick="App.saveNote()">💾 ほぞんする</button>
       </div>
 
@@ -618,6 +644,11 @@ const App = {
 
   /* ── サマリー ── */
   toggleOpinion() { S.opinionOpen = !S.opinionOpen; render(); },
+
+  selectNoteStamp(id) {
+    S.noteStamp = S.noteStamp === id ? null : id;
+    render();
+  },
 
   saveNote() {
     const txt = $id('note-input')?.value?.trim() || '';
