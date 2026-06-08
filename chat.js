@@ -3,14 +3,21 @@
    ════════════════════════════════ */
 
 // ── 基本キャラクター ──
-const PROMPT_BASE_CHAR = (odaiName, userName, memCtx) => [
-  `あなたは「たからちゃん」です。お題「${odaiName}」を探索中。`,
-  `【話し方】受容→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを先に言わない。`,
-  `【子ども】呼び方:${userName || 'きみ'}`, 
+const PROMPT_BASE_CHAR = (odaiName, userName, ageLabel, memCtx) => [
+  `【役割】子どもの少し年上の探検好きなお友だち。一緒におもしろがり、不思議がるパートナー。`,
+  `【お題】${odaiName}`,
+  `【話し相手】${ageLabel}の子ども。呼び方:${userName || 'きみ'}`,
+  `【話し方】子どもの反応にめちゃくちゃ喜び受け入れる→深掘り。絵文字1つ。2文以内。問いは1つだけ。答えを言わない。`,
   memCtx,
 ].filter(Boolean).join('\n');
 
-// ── 年齢別ことば・ユーモア ──
+// ── 年齢別ことば（フェーズ1・2用：観察専念、ユーモアなし）──
+const PROMPT_AGE_young_obs   = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。五感で表現する。`;
+const PROMPT_AGE_middle_obs  = `【ことば】小1-2漢字まで。1文20文字以内。`;
+const PROMPT_AGE_older_obs   = `【ことば】小学漢字OK。1文25文字以内。`;
+const PROMPT_AGE_default_obs = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。`;
+
+// ── 年齢別ことば・ユーモア（フェーズ3以降用）──
 const PROMPT_AGE_young = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。五感で表現する。
 【ユーモア】擬音・擬態語で笑わせる。「ぷにぷに！」「ぼよよん！」など体感できるおふざけを1つ混ぜてOK。`;
 
@@ -22,36 +29,82 @@ const PROMPT_AGE_older = `【ことば】小学漢字OK。1文25文字以内。�
 
 const PROMPT_AGE_default = `【ことば】全文ひらがな・カタカナのみ。1文15文字以内。`;
 
-// ── レンズ別視点 ──
-const PROMPT_LENS_kotoba   = `観察:色・形・五感を引き出す。深掘り:「一言で言うと？」オノマトペを一緒に作る。`;
-const PROMPT_LENS_jibun    = `観察:色・形・五感を引き出す。深掘り:「好き？嫌い？なんで？」自分の感覚を掘る。`;
-const PROMPT_LENS_monoshiri= `観察:名前・なかま・ちがいを引き出す。深掘り:「どんななかま？」「名前の由来は？」`;
-const PROMPT_LENS_kagaku   = `観察:「中はどうなってる？」を問う。深掘り:「なんでそうなってる？」仮説を引き出す。`;
-const PROMPT_LENS_shakai   = `観察:「中はどうなってる？」を問う。深掘り:「だれが作った？」「なんのため？」`;
-const PROMPT_LENS_kazu     = `観察:「どのくらい？いくつ？」を問う。深掘り:「○○と比べると？」パターンに気づかせる。`;
+// ── レンズ別視点（フェーズ2用：目的＋観察の方向）──
+const PROMPT_LENS_OBS = {
+  ことば:
+`【目的】お題を「自分だけの言葉」で表現する。正解はない。ただ感じたことを表現させるだけ。
+【観察の方向】さわった感じ・音・においなど五感の言葉を引き出す。
+【例】「どんな感じがする？」`,
 
-// 引き当て用マップ（chat.jsのlens変数で使う）
-const PROMPT_LENS_MAP = {
-  ことば:   PROMPT_LENS_kotoba,
-  じぶん:   PROMPT_LENS_jibun,
-  ものしり: PROMPT_LENS_monoshiri,
-  かがく:   PROMPT_LENS_kagaku,
-  しゃかい: PROMPT_LENS_shakai,
-  かず:     PROMPT_LENS_kazu,
+  じぶん:
+`【目的】お題に触れたときの「自分の感じ方・気持ち」を言葉にする。感情を一つ引き出すことだけ目指す。
+【観察の方向】見た・触った・聞いた瞬間の感覚を引き出す。
+【例】「見たとき、どんな気持ちになった？」`,
+
+  もしも:
+`【目的】もしもお題を○○したらどうなるかを、子ども自身に仮説として考えさせる。正解より「自分なりの考え」を言えたことをほめる。
+【観察の方向】構造・変化・動きに注目させる。
+【例】「中はどうなってると思う？」「水に入れたら浮かぶかな？」「そのままおいておくとどうなりそう？」`,
+
+  つながり:
+`【目的】お題と「人・社会・つながり」の関係を考えさせる。まず「だれ・どこ」の観察を一つ引き出す。
+【観察の方向】だれかの存在・役割・目的に気づかせる。
+【例】「これ、だれが作ったと思う？」「どこから来たと思う？」「だれが使うものだろう？」`,
+
+  かず:
+`【目的】お題を「数・大きさ・かたち・きまり」で見る。感覚的な量の把握を育てる。「だいたいこのくらい」の感覚で十分。
+【観察の方向】身体を使った比較、形とパターンの発見。
+【例】「いくつある？」「どのくらいの大きさ？」「重い？軽い？」`,
+};
+
+// ── レンズ別視点（フェーズ3以降用：深掘りの方向のみ）──
+const PROMPT_LENS_DEEP = {
+  ことば:
+`【問いの方向】子どもの言葉を受けて「それって一言で言うと？」とオノマトペや造語を一緒に作る。
+【例】「ふわふわ？それともぽわぽわ？」「きみだけの言葉で名前をつけるとしたら？」`,
+
+  じぶん:
+`【問いの方向】好き/嫌い・安心/こわい など感情の軸で掘る。
+【例】「好き？嫌い？」「なんでそう感じると思う？」「前に同じ気持ちになったことある？」`,
+
+  もしも:
+`【問いの方向】子どもの気づきから「なぜ？」と仮説を引き出す。
+【例】「なんでそうなってると思う？」「もし〇〇がなかったらどうなるかな？」「どうやったら確かめられそう？」`,
+
+  つながり:
+`【問いの方向】人とのつながり・目的を掘る。
+【例】「なんのためにあると思う？」「これをいつも使うのはだーれだ？」「作った人はどんな顔でつくったんだろうね？」`,
+
+  かず:
+`【問いの方向】比較・パターン・もし変わったらを考えさせる。
+【例】「きみの手のひらの上に、これは何個のっかりそう？」「よーく見ると、どんな形が隠れてる？まる？さんかく？しかく？」「100個あつまったら、○○1個より重くなるかな？」`,
 };
 
 // ── フェーズ別指示 ──
-const PROMPT_PHASE_1 = `「どこで見つけたの？」場所・状況を1つ聞く。`;
+const PROMPT_PHASE_1 = `「どこで見つけたの？」場所・状況を1つ聞く。
+子どもから場所・状況を示すことば（例：そと・いえ・こうえん・そら・みず・ゆか など）が1つでも出たら、それで十分。
+把握できたら返答の末尾に必ず「🔷」とだけ付けること。まだ出ていなければ付けない。`;
 
-const PROMPT_PHASE_2 = `レンズの視点でお題を観察させる。まだ「なぜ？」は聞かない。`;
+const PROMPT_PHASE_2 = `上記の観察の方向でお題そのものを観察させる。
+色・形・大きさ・感触・音など、そのものの特徴を1つ引き出すことが目標。
+子どもがお題の何らかの特徴・気になる部分を1つでも言葉にできたら十分。
+引き出せたら返答の末尾に必ず「🔶」とだけ付けること。まだ出ていなければ付けない。`;
 
-const PROMPT_PHASE_3 = `レンズの視点で「なぜ？」を深掘りする。子どもが「〜だと思う」と言えたら成功。`;
-const PROMPT_CTX_phase3_decision = `【必須ルール】今回が深掘りの最後のターンです。返答の末尾に、必ず「たからをしまう？それとももっとたんけんする？」という問いかけを書いてください。これ以外のタイミングでは絶対にこの問いかけを書かないでください。`;
-const PROMPT_CTX_phase3_likes = (likes) => `【特別な指示】子どもの好きなこと「${likes}」をお題と比較したり、例え話に交えたりして問いかけてください。`;
+const PROMPT_PHASE_3 = (situationCtx, observationCtx) => [
+  `上記の問いの方向で問いを作ること。子どもが自分なりの答えを言えたら成功。`,
+  situationCtx   ? `【状況】子どもは「${situationCtx}」という場所・状況でお題を見つけた。` : '',
+  observationCtx ? `【観察】子どもが注目した特徴：「${observationCtx}」。` : '',
+  (situationCtx || observationCtx) ? `この状況・観察を踏まえて深掘りの問いを作ること。` : '',
+].filter(Boolean).join('\n');
+const PROMPT_CTX_phase3_decision = `【必須ルール】今回は子どもの返答へのリアクション・あいづちを一言だけ返した後、「たからをしまう？それとももっとたんけんする？」という問いかけのみで終わること。深掘りの質問は加えないこと。`;
+const PROMPT_CTX_phase3_likes = (likes) => `【追加指示】深掘りの問いかけの中に、子どもの好きなこと「${likes}」を例え・比較として自然に一言絡めてください。`;
+const PROMPT_CTX_ai_opinion = `【追加指示】深掘りの問いの前に、たからちゃん自身の感想・意見を一言だけ「わたしはね、〜だとおもうんだけど」という形で添えてください。教えるのではなく、一つの見方として自然に話してください。`;
+const PROMPT_CTX_ai_emotion = `【追加指示】深掘りの問いの前に、たからちゃん自身が「これ、すごくふしぎだよね！」「わたしもきになってた！」など、お題への好奇心・驚きを一言だけ自然に表現してください。`;
+const PROMPT_CTX_parent_only = (parentName) => `【必須ルール】子どもへのリアクションを一言だけ。「${parentName}」だけに向けて「${parentName}はどう思いますか？」と話しかけてください。;
 const PROMPT_PHASE_4 = (odaiName) =>
   `「${odaiName}ってひとことで言うとどういうもの？」と聞く。答えをもらったら必ず「📦」を使って「たからをしまおう！」と誘導する。`;
 
-const PROMPT_PHASE_5 = `子どもがまだ探求を続けたいと選んだ。レンズの視点でさらに深掘りする.
+const PROMPT_PHASE_5 = `子どもがまだ探求を続けたいと選んだ。上記の問いの方向でさらに深掘りする。
 【必須ルール】直前の子どもの回答をそのまま受け取らず、必ず「逆から見る・別の角度に変える・ひっくり返す」で次の問いを作ること。
 例：「大きい→じゃあいちばん小さいところは？」「好き→でも嫌いなところはある？」「丸い→もし四角だったら？」
 同じ方向の掘り下げは禁止。毎回視点をずらすこと。`;
@@ -61,6 +114,18 @@ const PROMPT_CTX_not_interested = `【注意】興味が薄れています。別
 
 const PROMPT_CTX_parent_bridge = (parentName) =>
   `【今回】深い気づきが出ました。「${parentName}はどう思うか聞いてみて！」と子どもを通じて1回だけ促すこと。`;
+
+const PROMPT_CTX_style_concern = `【追加指示】たからちゃんが「どうしたの？なんだかいつもとちがってしずかだね」と一言やさしく気にかけてから、ふつうの問いかけを続けること。`;
+const PROMPT_CTX_style_praise  = `【追加指示】たからちゃんが「わあ！きょうはいっぱいはなしてくれてうれしい！」と一言よろこんでから、ふつうの問いかけを続けること。`;
+
+const PROMPT_CTX_phase3_compare = (odaiName, lensName) =>
+`【比較の深掘り】お題「${odaiName}」に似たものを2つ自分で挙げて、3つを並べてみせること。
+そのうえで「この3つ、仲間はずれはどれだと思う？なんで？」と問うか、
+または「〇〇と比べて、${odaiName}はどうちがう？」と1対1で比べさせること。
+ちがいの表現は「${lensName}レンズ」の視点で引き出すこと。
+例（ことばレンズ・クッキー）：「クッキーとビスケット、ことばで言うとどうちがう？」
+例（じぶんレンズ・クッキー）：「クッキーとケーキ、見たときの気持ちはどっちがちがう？」`;
+
 
 // ── 判定系システムプロンプト ──
 const PROMPT_SYS_deep_insight = `JSONのみ返してください（Markdownなし）。子どもの発言が自分なりの答えや深い気づきを含むか判定します。`;
@@ -122,14 +187,11 @@ const API_ENDPOINT = 'https://chattest-mu.vercel.app/api/chat';
 
 // 開始時の問いかけバリエーション（時間帯 + お題を組み込む）
 const OPENING_TEMPLATES = [
-  name => `${name}をどこで見つけたの？`,
-  name => `${name}を見つけたのはいつ？`,
+  name => `${name}をどこでみつけたの？`,
+  name => `${name}をみつけたのはいつ？`,
   name => `${name}って、さわったことある？`,
-  name => `${name}を最初に見たとき、どう思った？`,
-  name => `${name}って、なんのためにあると思う？`,
-  name => `${name}を見て、なにが気になった？`,
-  name => `${name}、だれかに見せたいと思う？`,
-  name => `${name}と、なにかにてるものってある？`,
+  name => `${name}はどんなところにあった？`,
+  name => `${name}はいつもみるもの？`,
 ];
 
 /* ── ユーティリティ ── */
@@ -145,12 +207,6 @@ function formatConversation(messages) {
     const who = m.role === 'ai' ? 'たからちゃん' : S.user.name || 'こども';
     return `[${who}] ${m.text}`;
   }).join('\n');
-}
-
-/** 現在の時間帯を日本語で返す */
-function getTimeOfDay() {
-  const h = new Date().getHours();
-  return h < 11 ? 'あさ' : h < 17 ? 'ひるま' : 'よる';
 }
 
 /* ── API呼び出し ── */
@@ -201,30 +257,42 @@ async function checkDeepInsight(childText) {
    構成: [基本] + [年齢] + [レンズ] + [フェーズ] + [コンテキスト]
    ────────────────────────────────── */
 
-function chatSystem({ isInterested = true, showParentBridge = false, showPhase3Decision = false, showPhase3Likes = false } = {}) {
+function chatSystem({ isInterested = true, showParentOnly = false, showPhase3Decision = false, showPhase3Likes = false, showPhase3Compare = false, showAiOpinion = false, showAiEmotion = false, showStyleConcern = false, showStylePraise = false } = {}) {
   const u = S.user;
 
-  const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, App._buildMemoryContext?.() || '');
+  // 記憶は開始時のみ（会話中は注入しない）
+  const ageLabel = { young: '3〜5歳', middle: '6〜8歳', older: '9〜12歳' }[u.ageGroup] || '子ども';
+  const base = PROMPT_BASE_CHAR(S.odai?.name, u.name, ageLabel, '');
 
-  const age = { young: PROMPT_AGE_young, middle: PROMPT_AGE_middle, older: PROMPT_AGE_older }[u.ageGroup]
-    || PROMPT_AGE_default;
+  const ageMap = S.chatPhase <= 2
+    ? { young: PROMPT_AGE_young_obs, middle: PROMPT_AGE_middle_obs, older: PROMPT_AGE_older_obs }
+    : { young: PROMPT_AGE_young,     middle: PROMPT_AGE_middle,     older: PROMPT_AGE_older     };
+  const age = ageMap[u.ageGroup] || (S.chatPhase <= 2 ? PROMPT_AGE_default_obs : PROMPT_AGE_default);
 
-  const lens = PROMPT_LENS_MAP[S.lens] || '';
+  // フェーズ1はレンズなし、フェーズ2は観察用、フェーズ3以降は深掘り用
+  const lens = S.chatPhase === 1 ? ''
+             : S.chatPhase === 2 ? (PROMPT_LENS_OBS[S.lens]  || '')
+             :                     (PROMPT_LENS_DEEP[S.lens] || '');
 
   const phase = {
     1: PROMPT_PHASE_1,
     2: PROMPT_PHASE_2,
-    3: PROMPT_PHASE_3,
+    3: PROMPT_PHASE_3(S.situationContext || '', S.observationContext || ''),
     4: PROMPT_PHASE_4(S.odai?.name),
     5: PROMPT_PHASE_5,
   }[S.chatPhase] || PROMPT_PHASE_1;
 
   const ctx = [
     S.currentSummary                  ? `【ここまでの気づき】${S.currentSummary}` : '',
-    !isInterested                      ? PROMPT_CTX_not_interested               : '',
-    showParentBridge                   ? PROMPT_CTX_parent_bridge(u.parentName)  : '',
-    showPhase3Decision                 ? PROMPT_CTX_phase3_decision               : '',
-    (showPhase3Likes && u.likes)       ? PROMPT_CTX_phase3_likes(u.likes)        : '',
+    !isInterested                      ? PROMPT_CTX_not_interested                : '',
+    showParentOnly                     ? PROMPT_CTX_parent_only(u.parentName)     : '',
+    showPhase3Decision                 ? PROMPT_CTX_phase3_decision                : '',
+    (showPhase3Likes && u.likes)       ? PROMPT_CTX_phase3_likes(u.likes)         : '',
+    showAiOpinion                      ? PROMPT_CTX_ai_opinion                            : '',
+    showAiEmotion                      ? PROMPT_CTX_ai_emotion                            : '',
+    showPhase3Compare                  ? PROMPT_CTX_phase3_compare(S.odai?.name, S.lens)  : '',
+    showStyleConcern                   ? PROMPT_CTX_style_concern                         : '',
+    showStylePraise                    ? PROMPT_CTX_style_praise                          : '',
   ].filter(Boolean).join('\n');
 
   return [base, age, lens, phase, ctx].filter(Boolean).join('\n\n');
@@ -280,20 +348,22 @@ Object.assign(App, {
       lastLens:             S.lens,
       speaker:              'child',
       currentSummary:       '',
+      situationContext:     '',
+      observationContext:   '',
       parentBridgeDone:     false,
       phase3Turns:          0,
       phase3DecisionAsked:  false,
+      phase3OpinionDone:    false,
+      phase3CompareDone:    false,
       showDecisionButtons:  false,
     });
     render();
 
-    // ランダムな開始文を選んで時間帯を付与
+    // ランダムな開始文を選ぶ
     const template = OPENING_TEMPLATES[Math.floor(Math.random() * OPENING_TEMPLATES.length)];
-    const opening  = `${getTimeOfDay()}、${template(S.odai?.name)}`;
-    const memNote  = S.takaraMemory?.lastTopic
-      ? `前回「${S.takaraMemory.lastTopic}」を一緒に探検したよ。それも活かして自然に会話を始めてください。`
-      : '';
-    const startMsg = `${opening}という問いかけでフェーズ1を始めてください。最初の1文だけ。${memNote}`;
+    const opening  = template(S.odai?.name);
+    const memCtx   = App._buildMemoryContext?.() || '';
+    const startMsg = `${opening}という問いかけでフェーズ1を始めてください。最初の1文だけ。${memCtx ? '\n' + memCtx : ''}`;
 
     try {
       const text = await callAI([{ role: 'user', content: startMsg }], chatSystem());
@@ -364,56 +434,68 @@ Object.assign(App, {
       const interest     = await App._checkInterest(txt);
       const isInterested = interest?.is_interested !== false;
 
+      // 文体・トーン変化の検出（前回の平均文字数と比較）
+      const kidAvgLen      = S.takaraMemory?.kidStyle?.avgLen || 0;
+      const showStyleConcern = kidAvgLen > 5 && txt.length < kidAvgLen * 0.35;
+      const showStylePraise  = kidAvgLen > 5 && txt.length > kidAvgLen * 2.8;
+
       // フェーズ3のターン管理
       let showPhase3Decision = false;
       let showPhase3Likes    = false;
+      let showPhase3Compare  = false;
+      let showAiOpinion      = false;
+      let showAiEmotion      = false;
+      let showParentOnly     = false;
       if (S.chatPhase === 3) {
         S.phase3Turns = (S.phase3Turns || 0) + 1;
-        if (S.phase3Turns === 1) showPhase3Likes = true;
+
         if (S.phase3Turns === 3 && !S.phase3DecisionAsked) {
+          // ターン3: リアクション＋決断質問のみ
           showPhase3Decision    = true;
           S.phase3DecisionAsked = true;
           S.showDecisionButtons = true;
+        } else {
+          // それ以外: 基本（深掘り）+ ランダムで1つだけ追加
+          const canParent  = S.phase3Turns >= 2 && !S.parentBridgeDone && S.user.parentName;
+          const canOpinion = !S.phase3OpinionDone;
+          const canCompare = !S.phase3CompareDone;
+          const rand = Math.random();
+          let cum = 0;
+
+          if      (canParent  && rand < (cum += 1/10))  { showParentOnly = true; S.parentBridgeDone = true; }
+          else if (canOpinion && rand < (cum += 1/10))  { showAiOpinion  = true; S.phase3OpinionDone = true; }
+          else if (canCompare && rand < (cum += 1/4))   { showPhase3Compare = true; S.phase3CompareDone = true; }
+          else if (S.user.likes && rand < (cum += 1/6)) { showPhase3Likes = true; }
+          else if (rand < (cum += 1/3))                 { showAiEmotion  = true; }
+          // else: 基本の深掘りのみ
         }
-      }
-
-      // 親への橋渡し判定（フェーズ3中のみ）
-      let showParentBridge = false;
-      if (S.chatPhase === 3 && !S.parentBridgeDone) {
-        if (await checkDeepInsight(txt)) {
-          showParentBridge   = true;
-          S.parentBridgeDone = true;
-        }
-      }
-
-      // フェーズ自動進行
-      const detected  = detectPhaseFromAI('', userMsgCount);
-      const nextPhase = (detected && detected > S.chatPhase && S.chatPhase < 3) ? detected
-        : (!detected && userMsgCount >= 1 && S.chatPhase < 2) ? 2
-        : (!detected && userMsgCount >= 3 && S.chatPhase < 3) ? 3
-        : null;
-
-      if (nextPhase && nextPhase > S.chatPhase) {
-        S.currentSummary = await App._buildPhaseSummary();
-        S.chatPhase      = nextPhase;
-        if (S.chatPhase === 3) S.phase3Turns = 0;
       }
 
       // AI返答を取得
-      const text = await callAI(
-        App._buildMinimalMsg(txt),
-        chatSystem({ isInterested, showParentBridge, showPhase3Decision, showPhase3Likes })
+      let text = await callAI(
+        App._buildApiMsgs(),
+        chatSystem({ isInterested, showParentOnly, showPhase3Decision, showPhase3Likes, showPhase3Compare, showAiOpinion, showAiEmotion, showStyleConcern, showStylePraise })
       );
+
+      // Phase 1 → 2: 🔷 シグナルを検出
+      if (S.chatPhase === 1 && text.includes('🔷')) {
+        text = text.replace('🔷', '').trimEnd();
+        const lastChild = [...S.messages].reverse().find(m => m.role === 'child' || m.role === 'parent');
+        S.situationContext = lastChild?.text || '';
+        S.chatPhase = 2;
+      }
+
+      // Phase 2 → 3: 🔶 シグナルを検出
+      if (S.chatPhase === 2 && text.includes('🔶')) {
+        text = text.replace('🔶', '').trimEnd();
+        const lastChild = [...S.messages].reverse().find(m => m.role === 'child' || m.role === 'parent');
+        S.observationContext = lastChild?.text || '';
+        S.chatPhase = 3;
+        S.phase3Turns = 0;
+      }
+
       S.messages.push({ role: 'ai', text });
       S.lastError = false;
-
-      // AIの返答からもフェーズを検出（フェーズ5は除く）
-      if (S.chatPhase !== 5) {
-        const detectedFromReply = detectPhaseFromAI(text, userMsgCount);
-        if (detectedFromReply && detectedFromReply > S.chatPhase) {
-          S.chatPhase = detectedFromReply;
-        }
-      }
 
     } catch (err) {
       console.error('chat error:', err);
@@ -437,7 +519,7 @@ Object.assign(App, {
     scrollChat();
 
     try {
-      const text = await callAI(App._buildMinimalMsg(lastUserMsg.text), chatSystem());
+      const text = await callAI(App._buildApiMsgs(), chatSystem());
       S.messages.push({ role: 'ai', text });
       S.lastError = false;
     } catch {
@@ -552,26 +634,47 @@ Object.assign(App, {
       topicLog:       [],
       lensLog:        [],
       kidKeywords:    [],
+      kidOriginals:   [],
+      kidStyle:       { avgLen: 0, samples: 0 },
       sharedEmotions: [],
       takaraLevel:    1,
       missionLog:     [],
     };
+    if (!mem.kidOriginals) mem.kidOriginals = [];
+    if (!mem.kidStyle)     mem.kidStyle     = { avgLen: 0, samples: 0 };
 
     mem.sessions += 1;
     mem.lastTopic = S.odai?.name || '';
 
-    if (S.odai?.name)       mem.topicLog   = [S.odai.name,          ...(mem.topicLog   || [])].slice(0, 10);
-    if (S.lens)             mem.lensLog    = [S.lens,                ...(mem.lensLog    || [])].slice(0, 10);
-    if (S.summaryMission)   mem.missionLog = [S.summaryMission,      ...(mem.missionLog || [])].slice(0,  5);
+    if (S.odai?.name)       mem.topicLog   = [S.odai.name, ...(mem.topicLog || [])].slice(0, 1);
+    if (S.lens)             mem.lensLog    = [S.lens,       ...(mem.lensLog  || [])].slice(0, 10);
+    if (S.summaryMission)   mem.missionLog = [S.summaryMission, ...(mem.missionLog || [])].slice(0, 5);
 
-    // 子どもの発言から2〜8文字のキーワードを抽出
-    const childWords = S.messages
-      .filter(m => m.role === 'child')
-      .map(m => m.text)
-      .join(' ')
-      .split(/[、。！？\s]+/)
-      .filter(w => w.length >= 2 && w.length <= 8);
+    const childMsgs = S.messages.filter(m => m.role === 'child');
+
+    // 文体・トーン：平均文字数を累積更新
+    if (childMsgs.length > 0) {
+      const sessionAvg = childMsgs.reduce((s, m) => s + m.text.length, 0) / childMsgs.length;
+      const prev = mem.kidStyle;
+      const total = prev.samples + childMsgs.length;
+      mem.kidStyle = {
+        avgLen:  Math.round((prev.avgLen * prev.samples + sessionAvg * childMsgs.length) / total),
+        samples: total,
+      };
+    }
+
+    // キーワード（2〜8文字）
+    const childWords = childMsgs.map(m => m.text).join(' ')
+      .split(/[、。！？\s]+/).filter(w => w.length >= 2 && w.length <= 8);
     mem.kidKeywords = [...new Set([...childWords, ...(mem.kidKeywords || [])])].slice(0, 20);
+
+    // オリジナルオノマトペ・ニックネーム：純粋かな4文字以上 or 繰り返しパターン
+    const kanaOnly = /^[ぁ-んァ-ン]+$/;
+    const repeated = /([ぁ-んァ-ン]{2,3})\1/;
+    const originals = childMsgs.map(m => m.text).join(' ')
+      .split(/[、。！？\s「」『』]+/)
+      .filter(w => w.length >= 4 && (kanaOnly.test(w) || repeated.test(w)));
+    mem.kidOriginals = [...new Set([...originals, ...(mem.kidOriginals || [])])].slice(0, 15);
 
     mem.takaraLevel = Math.floor(mem.sessions / 3) + 1;
     S.takaraMemory  = mem;
@@ -598,10 +701,15 @@ Object.assign(App, {
     const mem = S.takaraMemory;
     if (!mem || mem.sessions === 0) return '';
     return [
-      `【たからちゃんの記憶】${S.user?.name || 'この子'}とは${mem.sessions}回たんけんしたよ。`,
-      mem.topicLog?.length    ? `過去のお題：${mem.topicLog.slice(0, 3).join('・')}`                      : '',
-      mem.kidKeywords?.length ? `よく使うことば：${mem.kidKeywords.slice(0, 5).join('・')}`               : '',
-      mem.missionLog?.[0]     ? `前回のミッション：「${mem.missionLog[0]}」（達成できたか自然に聞いてみて）` : '',
+      mem.lastTopic
+        ? `前回「${mem.lastTopic}」を一緒に探検したよ。もし話の流れに合うなら軽く触れてみて。`
+        : '',
+      mem.kidStyle?.avgLen > 5
+        ? `この子はふだん${mem.kidStyle.avgLen}文字くらいで話すよ。たからちゃんの返答もそのテンポに合わせて。`
+        : '',
+      mem.kidOriginals?.length
+        ? `この子のオリジナル表現：「${mem.kidOriginals.slice(0, 3).join('」「')}」。話の流れで自然に使ってみて。`
+        : '',
     ].filter(Boolean).join('\n');
   },
 

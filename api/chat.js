@@ -3,6 +3,7 @@ export default async function handler(req, res) {
   const allowedOrigins = [
     'https://chattest-mu.vercel.app',  // Vercel 本番
     /^https:\/\/chattest-mu-.*\.vercel\.app$/,  // Vercel プレビュー
+    /^https?:\/\/localhost(:\d+)?$/,  // ローカル開発
   ];
   const origin = req.headers.origin || '';
   const allowed = allowedOrigins.some(o =>
